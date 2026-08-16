@@ -1,5 +1,5 @@
 # Development and publishing tasks for the Emojis & Nerd Fonts plugin.
-# Requires: jq, node, python3, curl, git; plus `gh` for publish and `omarchy`
+# Requires: jq, node, python3, git; plus `gh` for publish and `omarchy`
 # for validate/install-local.
 
 [tasks.test]
@@ -18,18 +18,13 @@ description = "Sync plugin files into ~/.config/omarchy/plugins and restart the 
 run = """
 mkdir -p "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd"
 cp manifest.json Emojis.qml EmojiSearch.js emojis.json nerdfonts.tsv "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
-cp -a tools "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
 omarchy restart shell
 """
 
 [tasks.regenerate-dataset]
 description = "Rebuild nerdfonts.tsv from the pinned Nerd Fonts release (bump NF_VERSION to upgrade)"
 env = { NF_VERSION = "3.5.0" }
-run = """
-curl -fsSL -o /tmp/glyphnames.json \
-  "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v${NF_VERSION}/glyphnames.json"
-python3 tools/convert_nerd.py --input /tmp/glyphnames.json
-"""
+run = "python3 tools/convert_nerd.py"
 
 [tasks.check-dataset]
 description = "Check for a new Nerd Fonts release and preview glyph changes"

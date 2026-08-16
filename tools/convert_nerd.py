@@ -10,21 +10,40 @@ dashed name, and the name's words minus the set prefix. Set labels like
 "material" or "fontawesome" are deliberately omitted — they would match
 thousands of glyphs at once; narrow by prefix instead ("md home").
 
-To regenerate when Nerd Fonts ships a new release (or just run
-`mise run regenerate-dataset` from the repo root):
-
-    curl -fsSL -o /tmp/glyphnames.json \\
-      https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.0/glyphnames.json
-    python3 tools/convert_nerd.py --input /tmp/glyphnames.json
+Downloads the glyphnames.json for the release pinned as NF_VERSION in
+mise.toml; pass --version to fetch another release, or --input to convert
+a local file. Equivalent to `mise run regenerate-dataset` from the repo
+root.
 
 The picker greps the file on every search, so new data applies on the next
 search with no shell restart.
 """
 import argparse
 import json
+import tomllib
+import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+GLYPHS_URL = "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v{version}/glyphnames.json"
+
+
+def pinned_version():
+    with open(REPO_ROOT / "mise.toml", "rb") as f:
+        config = tomllib.load(f)
+    return config["tasks"]["regenerate-dataset"]["env"]["NF_VERSION"]
+
+
+def load_data(version, input_path):
+    if input_path:
+        with open(input_path) as f:
+            return input_path, json.load(f)
+    req = urllib.request.Request(
+        GLYPHS_URL.format(version=version),
+        headers={"User-Agent": "omarchy-emojis-nerd-convert"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return f"nerd-fonts v{version}", json.load(r)
 
 
 def keywords_for(names):
@@ -61,10 +80,13 @@ def main():
         description="Convert Nerd Fonts glyphnames.json to the picker's nerdfonts.tsv"
     )
     parser.add_argument(
+        "--version",
+        help="Nerd Fonts release to download (default: the NF_VERSION pin in mise.toml)",
+    )
+    parser.add_argument(
         "--input",
         type=Path,
-        default=REPO_ROOT / "tools" / "glyphnames.json",
-        help="path to glyphnames.json downloaded from the nerd-fonts repo",
+        help="convert this local glyphnames.json instead of downloading",
     )
     parser.add_argument(
         "--output",
@@ -74,14 +96,13 @@ def main():
     )
     args = parser.parse_args()
 
-    with open(args.input) as f:
-        data = json.load(f)
-
+    source, data = load_data(args.version or pinned_version(), args.input)
     rows = build_rows(data)
 
     with open(args.output, "w") as f:
         f.write("\n".join(r[1] for r in rows) + "\n")
 
+    print(f"source: {source}")
     print(f"unique glyphs: {len(rows)}")
     # sanity: keyword search test
     hits = sum(1 for _, line in rows if " home " in f" {line.split(chr(9))[0]} ")
