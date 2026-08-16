@@ -38,5 +38,38 @@ assert.strictEqual(EmojiSearch.filterEmojis(fixture, "", 100).length, 3)
 assert.strictEqual(EmojiSearch.filterEmojis(fixture, "", 2).length, 2)
 assert.strictEqual(EmojiSearch.filterEmojis(fixture, "", 0).length, 0)
 
+// queryTokens
+assert.deepStrictEqual(EmojiSearch.queryTokens("  Material   Home "), ["material", "home"])
+assert.deepStrictEqual(EmojiSearch.queryTokens(""), [])
+
+// glyphFromHex: BMP, astral (surrogate pair), and invalid input
+assert.strictEqual(EmojiSearch.glyphFromHex("f015"), "\uf015")
+assert.strictEqual(EmojiSearch.glyphFromHex("f0986"), String.fromCodePoint(0xf0986))
+assert.strictEqual(EmojiSearch.glyphFromHex("zzz"), "")
+assert.strictEqual(EmojiSearch.glyphFromHex(""), "")
+
+// parseTsvLine: keywords <TAB> name <TAB> hex
+const row = EmojiSearch.parseTsvLine("home md-home nf-md-home\tnf-md-home\tf02dc")
+assert.strictEqual(row.n, "nf-md-home")
+assert.strictEqual(row.e, String.fromCodePoint(0xf02dc))
+assert.strictEqual(row.k, "home md-home nf-md-home")
+assert.strictEqual(EmojiSearch.parseTsvLine("garbage"), null)
+assert.strictEqual(EmojiSearch.parseTsvLine("a\tb"), null)
+
+// filterTsvRows: token AND over keyword field, limit honored
+const tsvRows = [
+  "home md-home nf-md-home\tnf-md-home\tf02dc",
+  "home house fa-home nf-fa-home\tnf-fa-home\tf015",
+]
+assert.deepStrictEqual(
+  EmojiSearch.filterTsvRows(tsvRows, ["md", "home"], 100).map(i => i.n),
+  ["nf-md-home"]
+)
+assert.deepStrictEqual(
+  EmojiSearch.filterTsvRows(tsvRows, ["home"], 1).map(i => i.n),
+  ["nf-md-home"]
+)
+assert.deepStrictEqual(EmojiSearch.filterTsvRows(tsvRows, ["nomatch"], 100), [])
+
 console.log("emoji-search-test: all assertions passed")
 EOF

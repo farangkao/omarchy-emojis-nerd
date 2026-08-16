@@ -18,8 +18,16 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: false
   property var emojis: []
-  property var nerdGlyphs: []
   property string mode: "emoji"
+
+  // Nerd Font search streams from nerdfonts.tsv via grep instead of
+  // holding the whole dataset in memory: only matched rows are resident.
+  property int nerdSearchSeq: 0
+  property int nerdRunningSeq: 0
+  property var nerdActiveTokens: []
+  property var nerdRows: []
+  property var nerdPendingCmd: null
+  readonly property string tsvPath: Qt.resolvedUrl("nerdfonts.tsv").toString().replace("file://", "")
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -44,10 +52,6 @@ Item {
   property int columns: Math.floor((cardWidth - contentMargin * 2) / cellWidth)
 
   property int footerHeight: root.mode === "nerd" ? Style.space(26) : 0
-
-  function activeDataset() {
-    return root.mode === "nerd" ? root.nerdGlyphs : root.emojis
-  }
 
   function open(payloadJson) {
     root.opened = true
@@ -79,14 +83,16 @@ Item {
     if (root.opened) root.rebuildDisplay()
   }
 
-  function loadNerdGlyphs(raw) {
-    root.nerdGlyphs = EmojiSearch.parseEmojis(raw)
-    if (root.opened) root.rebuildDisplay()
+  function rebuildDisplay() {
+    if (root.mode === "nerd") {
+      root.selectedIndex = 0
+      nerdSearchDebounce.restart()
+      return
+    }
+    fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
   }
 
-  function rebuildDisplay() {
-    var out = EmojiSearch.filterEmojis(activeDataset(), root.filterText, 1000)
-
+  function fillDisplay(out) {
     displayModel.clear()
     for (var j = 0; j < out.length; j++) {
       displayModel.append({ emoji: out[j].e, index: j, name: (out[j].n || "") })
@@ -100,6 +106,36 @@ Item {
     Qt.callLater(function() {
       if (displayModel.count > 0) resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
     })
+  }
+
+  function runNerdSearch() {
+    var tokens = EmojiSearch.queryTokens(root.filterText)
+    root.nerdSearchSeq++
+
+    var cmd
+    if (tokens.length === 0) {
+      cmd = ["/usr/bin/head", "-n", "1000", root.tsvPath]
+    } else {
+      // The longest token is the cheapest grep prefilter; the exact
+      // token-AND over keywords runs in JS once the rows arrive.
+      tokens.sort(function(a, b) { return b.length - a.length })
+      cmd = ["/usr/bin/grep", "-i", "-F", "--", tokens[0], root.tsvPath]
+    }
+
+    if (nerdProc.running) {
+      root.nerdPendingCmd = cmd
+      nerdProc.running = false
+      return
+    }
+    startNerdProc(cmd)
+  }
+
+  function startNerdProc(cmd) {
+    root.nerdRows = []
+    root.nerdActiveTokens = EmojiSearch.queryTokens(root.filterText)
+    root.nerdRunningSeq = root.nerdSearchSeq
+    nerdProc.command = cmd
+    nerdProc.running = true
   }
 
   function select(delta) {
@@ -147,7 +183,8 @@ Item {
   function setMode(nextMode) {
     if (root.mode === nextMode) return
     root.mode = nextMode
-    root.filterText = ""
+    // Keep the filter across switches so Tab compares the same query
+    // in both datasets.
     root.selectedIndex = 0
     root.cursorActive = true
     root.rebuildDisplay()
@@ -201,9 +238,35 @@ Item {
     onLoaded: root.loadEmojis(text())
   }
 
-  FileView {
-    path: Qt.resolvedUrl("nerdfonts.json")
-    onLoaded: root.loadNerdGlyphs(text())
+  Timer {
+    id: nerdSearchDebounce
+    interval: 160
+    onTriggered: root.runNerdSearch()
+  }
+
+  Process {
+    id: nerdProc
+    command: ["/usr/bin/true"]
+
+    stdout: SplitParser {
+      onRead: function(data) { root.nerdRows.push(data) }
+    }
+
+    onExited: function(exitCode) {
+      if (root.nerdPendingCmd) {
+        // A SIGTERM from a superseded search is still settling; the
+        // queued run starts once this exit finishes.
+        var cmd = root.nerdPendingCmd
+        root.nerdPendingCmd = null
+        Qt.callLater(function() { root.startNerdProc(cmd) })
+        return
+      }
+      // Stale results (mode switched away, newer keystrokes, or a kill)
+      // are dropped by the sequence check.
+      if (root.mode !== "nerd" || root.nerdRunningSeq !== root.nerdSearchSeq) return
+      root.fillDisplay(EmojiSearch.filterTsvRows(root.nerdRows, root.nerdActiveTokens, 1000))
+      root.nerdRows = []
+    }
   }
 
   PanelWindow {

@@ -1,37 +1,47 @@
 #!/usr/bin/env bash
-# Sanity checks for the two datasets the picker loads.
+# Sanity checks for the datasets the picker loads: emojis.json in memory,
+# nerdfonts.tsv streamed through grep.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-jq empty emojis.json nerdfonts.json
+jq empty emojis.json
 
 EMOJI_COUNT=$(jq 'length' emojis.json)
-NERD_COUNT=$(jq 'length' nerdfonts.json)
 (( EMOJI_COUNT > 1800 )) || { echo "emojis.json: expected >1800 entries, got $EMOJI_COUNT" >&2; exit 1; }
-(( NERD_COUNT > 10000 )) || { echo "nerdfonts.json: expected >10000 entries, got $NERD_COUNT" >&2; exit 1; }
-
-# schema: every entry has string e + k; nerd entries also carry the n name
 jq -e 'all(.[]; (.e | type) == "string" and (.k | type) == "string")' emojis.json > /dev/null
-jq -e 'all(.[]; (.e | type) == "string" and (.k | type) == "string" and (.n | type) == "string")' nerdfonts.json > /dev/null
+jq -e 'any(.[]; .e == "😀")' emojis.json > /dev/null
 
-# spot checks
-jq -e 'any(.[]; .n == "nf-md-home")' nerdfonts.json > /dev/null
-jq -e 'any(.[]; .n == "nf-cod-arrow_left")' nerdfonts.json > /dev/null
+# TSV: one row per glyph, three tab-separated fields, ASCII hex codepoints
+TSV_LINES=$(wc -l < nerdfonts.tsv)
+(( TSV_LINES > 10000 )) || { echo "nerdfonts.tsv: expected >10000 lines, got $TSV_LINES" >&2; exit 1; }
+LC_ALL=C awk -F'\t' 'NF != 3 || $3 !~ /^[0-9a-f]+$/ { exit 1 }' nerdfonts.tsv \
+  || { echo "nerdfonts.tsv: malformed row (expected keywords<TAB>name<TAB>hex)" >&2; exit 1; }
+LC_ALL=C awk -F'\t' '$2 == "nf-md-home" { found = 1 } END { exit !found }' nerdfonts.tsv \
+  || { echo "nerdfonts.tsv: nf-md-home row missing" >&2; exit 1; }
+if LC_ALL=C command grep -qP '[^\x00-\x7f]' nerdfonts.tsv; then
+  echo "nerdfonts.tsv: expected pure ASCII (hex codepoints, not raw glyphs)" >&2
+  exit 1
+fi
 
-# search behavior over the real dataset
+# search behavior over the real dataset (same token-AND semantics as QML)
 node <<'EOF'
 const assert = require("assert")
 const fs = require("fs")
 const EmojiSearch = require("./EmojiSearch.js")
 
-const nerd = JSON.parse(fs.readFileSync("nerdfonts.json", "utf8"))
-const byName = Object.fromEntries(nerd.map(i => [i.n, i]))
+const rows = fs.readFileSync("nerdfonts.tsv", "utf8").split("\n").filter(Boolean)
+const byName = Object.fromEntries(rows.map(r => [EmojiSearch.parseTsvLine(r).n, r]))
 
-assert.ok(EmojiSearch.filterEmojis(nerd, "house", 1000).length >= 5)
+assert.ok(EmojiSearch.filterTsvRows(rows, ["house"], 1000).length >= 5)
 assert.ok(byName["nf-md-home"])
-assert.ok(EmojiSearch.filterEmojis(nerd, "material home", 1000).some(i => i.n === "nf-md-home"))
-assert.ok(EmojiSearch.filterEmojis(nerd, "arrow left", 1000).some(i => i.n === "nf-cod-arrow_left"))
-assert.strictEqual(EmojiSearch.filterEmojis(nerd, "zzznomatch", 1000).length, 0)
+assert.ok(EmojiSearch.filterTsvRows(rows, ["md", "home"], 1000).some(i => i.n === "nf-md-home"))
+assert.ok(EmojiSearch.filterTsvRows(rows, ["arrow", "left"], 1000).some(i => i.n === "nf-cod-arrow_left"))
+assert.strictEqual(EmojiSearch.filterTsvRows(rows, ["zzznomatch"], 1000).length, 0)
+// Set labels are stripped from keywords: "material" only matches glyphs
+// genuinely named material, and the glyph is decodable (astral codepoint).
+const material = EmojiSearch.filterTsvRows(rows, ["material"], 1000)
+assert.strictEqual(material.length, 5)
+assert.ok(material.every(i => i.e.length > 0))
 
 console.log("dataset-test: all assertions passed")
 EOF

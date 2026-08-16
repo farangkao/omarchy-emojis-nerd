@@ -14,7 +14,7 @@ working; it just opens this picker instead.
 - **Two datasets, one popup** — 1,800+ emojis and 10,600+ Nerd Font glyphs
 - **`!house` flips to Nerd Fonts instantly** — the leading `!` is a sticky
   mode switch; **Tab** or the header tabs switch back and forth
-- **Multi-word search** — every word must match, so `material home` finds
+- **Multi-word search** — every word must match, so `md home` finds
   `nf-md-home`
 - **Named glyphs** — in Nerd Fonts mode the footer shows the selected
   glyph's official name (`nf-md-home`), handy for configs and prompts
@@ -84,7 +84,7 @@ Removal re-enables the built-in emoji picker.
 | --- | --- |
 | Type text | Search the active dataset |
 | `!` + text | Switch to Nerd Fonts and search (`!house`) |
-| Tab | Toggle emojis ↔ Nerd Fonts |
+| Tab | Toggle emojis ↔ Nerd Fonts (the filter is kept) |
 | Header tabs | Switch modes with the mouse |
 | Arrow keys / PageUp / PageDown | Move the cursor |
 | Enter | Type the selected glyph into the focused app |
@@ -113,11 +113,18 @@ Local dev loop: edit → `mise run install-local` → SUPER+CTRL+E.
 
 ### Dataset
 
-`nerdfonts.json` is generated from Nerd Fonts `glyphnames.json` (name →
-codepoint mapping only; no font data), pinned to v3.5.0. Alias names sharing
-a codepoint are merged into one entry. Keywords match on `nf-`-prefixed
-names, dashed and underscored forms, human-readable set names (`material`,
-`fontawesome`, ...), and individual words.
+`nerdfonts.tsv` is generated from Nerd Fonts `glyphnames.json` (name →
+codepoint mapping only; no font data), pinned to v3.5.0. One line per
+glyph: keywords, name, hex codepoint. Alias names sharing a codepoint are
+merged, and keywords are source-derived only — the name in its `nf-`, raw,
+and dashed forms plus its words. Set labels ("material", "fontawesome",
+…) are deliberately left out so they don't match thousands of glyphs at
+once; narrow by prefix instead (`md home`).
+
+Nerd Font search streams the file through `grep` instead of loading it
+into memory: only the visible page of results is ever resident, and a
+regenerated dataset applies on the next search with no shell restart.
+Emojis (108 KB) stay in memory for instant as-you-type filtering.
 
 ## License
 
