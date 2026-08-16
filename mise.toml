@@ -1,0 +1,46 @@
+# Development and publishing tasks for the Emojis & Nerd Fonts plugin.
+# Requires: jq, node, python3, curl, git; plus `gh` for publish and `omarchy`
+# for validate/install-local.
+
+[tasks.test]
+description = "Run search-logic and dataset tests"
+run = """
+tests/emoji-search-test.sh
+tests/dataset-test.sh
+"""
+
+[tasks.validate]
+description = "Validate the plugin manifest and entry points"
+run = "omarchy plugin validate ."
+
+[tasks.install-local]
+description = "Sync plugin files into ~/.config/omarchy/plugins and restart the shell"
+run = """
+mkdir -p "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd"
+cp manifest.json Emojis.qml EmojiSearch.js emojis.json nerdfonts.json "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
+cp -a tools "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
+omarchy restart shell
+"""
+
+[tasks.regenerate-dataset]
+description = "Rebuild nerdfonts.json from the pinned Nerd Fonts release (bump NF_VERSION to upgrade)"
+env = { NF_VERSION = "3.5.0" }
+run = """
+curl -fsSL -o /tmp/glyphnames.json \
+  "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v${NF_VERSION}/glyphnames.json"
+python3 tools/convert_nerd.py --input /tmp/glyphnames.json
+"""
+
+[tasks.submission-body]
+description = "Write and preview the marketplace submission issue body"
+run = "tools/make-submission.sh"
+
+[tasks.publish]
+description = "Submit the plugin to the Omarchy plugin marketplace (repo must be public)"
+depends = ["submission-body"]
+run = """
+gh issue create \
+  --repo HANCORE-linux/omarchy-plugin-marketplace \
+  --title "[Plugin]: Emojis & Nerd Fonts" \
+  --body-file /tmp/omarchy-plugin-submission.md
+"""

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "farangkao.emojis-nerd",
+  "name": "Emojis & Nerd Fonts",
+  "version": "1.0.0",
+  "author": "farangkao",
+  "license": "MIT",
+  "description": "Search, copy, and type emojis and Nerd Font glyphs",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Emojis.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.emojis"
+  }
+}
