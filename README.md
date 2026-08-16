@@ -101,7 +101,8 @@ Tasks live in [`mise.toml`](mise.toml) ([mise](https://mise.jdx.dev)):
 mise run test               # search-logic + dataset tests
 mise run validate           # omarchy plugin validate
 mise run install-local      # sync into ~/.config/omarchy/plugins + restart shell
-mise run regenerate-dataset # rebuild nerdfonts.json from pinned Nerd Fonts data
+mise run check-dataset      # check for a new Nerd Fonts release, preview glyph changes
+mise run regenerate-dataset # rebuild nerdfonts.tsv from the pinned Nerd Fonts release
 mise run submission-body    # preview the marketplace submission issue
 mise run publish            # submit to the Omarchy plugin marketplace
 ```

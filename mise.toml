@@ -23,13 +23,17 @@ omarchy restart shell
 """
 
 [tasks.regenerate-dataset]
-description = "Rebuild nerdfonts.json from the pinned Nerd Fonts release (bump NF_VERSION to upgrade)"
+description = "Rebuild nerdfonts.tsv from the pinned Nerd Fonts release (bump NF_VERSION to upgrade)"
 env = { NF_VERSION = "3.5.0" }
 run = """
 curl -fsSL -o /tmp/glyphnames.json \
   "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v${NF_VERSION}/glyphnames.json"
 python3 tools/convert_nerd.py --input /tmp/glyphnames.json
 """
+
+[tasks.check-dataset]
+description = "Check for a new Nerd Fonts release and preview glyph changes"
+run = "python3 tools/check_nerdfonts.py"
 
 [tasks.submission-body]
 description = "Write and preview the marketplace submission issue body"
