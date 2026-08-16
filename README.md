@@ -29,6 +29,19 @@ SUPER+CTRL+E binding and `omarchy menu emoji` — to this plugin and disables
 the built-in picker. Disabling or removing the plugin restores the built-in
 picker automatically. No user configuration is overwritten.
 
+## Typing vs. copying
+
+The default actions deliberately keep the original `omarchy.emojis` picker's
+behavior, for as much compatibility as possible:
+
+- **Enter / left-click types** the glyph, exactly like the built-in picker:
+  an ephemeral, paste-only clipboard grab plus a paste keystroke inserts it
+  into the focused app and **leaves no copy in your clipboard or its
+  history**.
+- **Ctrl+Enter / right-click copies** the glyph for the cases where you do
+  want a copy: a regular `wl-copy` that keeps the glyph on the clipboard —
+  pasteable anywhere, repeatedly, and visible in the clipboard manager.
+
 ## Requirements
 
 - [Omarchy](https://omarchy.org) with shell plugin support
@@ -76,19 +89,6 @@ Removal re-enables the built-in emoji picker.
 | Left click | Type the glyph |
 | Right click | Copy the glyph |
 | Escape | Clear the filter, then close |
-
-## Typing vs. copying
-
-The default actions deliberately keep the original `omarchy.emojis` picker's
-behavior, for as much compatibility as possible:
-
-- **Enter / left-click types** the glyph, exactly like the built-in picker:
-  an ephemeral, paste-only clipboard grab plus a paste keystroke inserts it
-  into the focused app and **leaves no copy in your clipboard or its
-  history**.
-- **Ctrl+Enter / right-click copies** the glyph for the cases where you do
-  want a copy: a regular `wl-copy` that keeps the glyph on the clipboard —
-  pasteable anywhere, repeatedly, and visible in the clipboard manager.
 
 ## Development
 
