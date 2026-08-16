@@ -4,6 +4,9 @@ An emoji **and** Nerd Font glyph picker for [Omarchy](https://omarchy.org) —
 a drop-in replacement for the built-in emoji picker. SUPER+CTRL+E keeps
 working; it just opens this picker instead.
 
+> **Acknowledgment:** this plugin was heavily developed with AI assistance
+> (GLM-5.3). All code has been reviewed and tested by the repository owner.
+
 ![Emojis & Nerd Fonts picker](preview.png)
 
 ## Features
