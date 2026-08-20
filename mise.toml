@@ -17,7 +17,7 @@ run = "omarchy plugin validate ."
 description = "Sync plugin files into ~/.config/omarchy/plugins and restart the shell"
 run = """
 mkdir -p "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd"
-cp manifest.json Emojis.qml EmojiSearch.js emojis.json nerdfonts.tsv "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
+cp manifest.json Emojis.qml EmojiSearch.js emojis.json nerdfonts.tsv kaomoji.tsv "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
 omarchy restart shell
 """
 

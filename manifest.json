@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "farangkao.emojis-nerd",
   "name": "Emojis & Nerd Fonts",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "farangkao",
   "license": "MIT",
-  "description": "Search, copy, and type emojis and Nerd Font glyphs",
+  "description": "Search, copy, and type emojis, kaomoji, and Nerd Font glyphs",
   "kinds": [
     "overlay"
   ],

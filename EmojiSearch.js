@@ -83,6 +83,30 @@ function parseTsvLine(line) {
   return glyph ? { e: glyph, n: f[1], k: f[0].toLowerCase() } : null
 }
 
+// kaomoji.tsv rows are: tags <TAB> kaomoji-string. Rows feed straight
+// into filterEmojis (token-AND over k), so "table flip" matches the tag
+// "table flip" as the tokens table+flip.
+function parseKaomojiTsv(raw) {
+  var lines = String(raw || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    if (!line) continue
+    var tab = line.indexOf("\t")
+    if (tab < 0) continue
+    var tags = line.substring(0, tab)
+    var str = line.substring(tab + 1)
+    if (str) out.push({ e: str, k: tags.toLowerCase(), tags: tags })
+  }
+  return out
+}
+
+// "[tag1, tag2]" for the row's centered, dimmed tag column.
+function formatKaomojiTags(tags) {
+  var text = String(tags || "")
+  return text ? "[" + text.split(" ").join(", ") + "]" : ""
+}
+
 // Rows arrive from a single-token grep prefilter; re-check the full
 // token-AND here so semantics match the in-memory filterEmojis exactly.
 function filterTsvRows(rows, tokens, limit) {
@@ -108,6 +132,8 @@ if (typeof module !== "undefined") {
     filterEmojis: filterEmojis,
     queryTokens: queryTokens,
     glyphFromHex: glyphFromHex,
+    parseKaomojiTsv: parseKaomojiTsv,
+    formatKaomojiTags: formatKaomojiTags,
     parseTsvLine: parseTsvLine,
     filterTsvRows: filterTsvRows
   }
