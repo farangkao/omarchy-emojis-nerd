@@ -29,6 +29,13 @@ Item {
   property var nerdPendingCmd: null
   readonly property string tsvPath: Qt.resolvedUrl("nerdfonts.tsv").toString().replace("file://", "")
 
+  // Kaomoji rows parse from kaomoji.tsv on first tab activation (the
+  // FileView's preload stays false until then) and live in memory —
+  // ~1.5k short rows, unlike the grep-streamed nerd dataset. Null until
+  // that first load lands.
+  property var kaomojiRows: null
+  readonly property var modeOrder: ["emoji", "nerd", "kaomoji"]
+
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
   // singleton so consumers drop them straight into Rectangle bindings.
@@ -50,6 +57,8 @@ Item {
   property int cellWidth: Math.max(Style.space(44), Style.font.display + Style.spacing.md)
   property int cellHeight: Math.max(Style.space(44), Style.font.display + Style.spacing.md)
   property int columns: Math.floor((cardWidth - contentMargin * 2) / cellWidth)
+
+  property int listRowHeight: Math.max(Style.space(32), Style.font.title + Style.spacing.md)
 
   property int footerHeight: root.mode === "nerd" ? Style.space(26) : 0
 
@@ -89,13 +98,31 @@ Item {
       nerdSearchDebounce.restart()
       return
     }
+    if (root.mode === "kaomoji") {
+      root.selectedIndex = 0
+      // First activation pulls the trigger on the deferred read; an
+      // empty return means the file hasn't landed yet and onLoaded
+      // will rebuild instead.
+      if (root.kaomojiRows === null) {
+        var raw = kaomojiFile.text()
+        if (raw) root.kaomojiRows = EmojiSearch.parseKaomojiTsv(raw)
+      }
+      if (root.kaomojiRows === null) return
+      fillDisplay(EmojiSearch.filterEmojis(root.kaomojiRows, root.filterText, 1000))
+      return
+    }
     fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
   }
 
   function fillDisplay(out) {
     displayModel.clear()
     for (var j = 0; j < out.length; j++) {
-      displayModel.append({ emoji: out[j].e, index: j, name: (out[j].n || "") })
+      displayModel.append({
+        emoji: out[j].e,
+        index: j,
+        name: (out[j].n || ""),
+        tags: EmojiSearch.formatKaomojiTags(out[j].tags)
+      })
     }
 
     if (displayModel.count === 0) selectedIndex = 0
@@ -104,8 +131,13 @@ Item {
     cursorActive = displayModel.count > 0
 
     Qt.callLater(function() {
-      if (displayModel.count > 0) resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
+      if (displayModel.count > 0) root.positionSelected()
     })
+  }
+
+  function positionSelected() {
+    if (root.mode === "kaomoji") kaomojiList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    else resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
   }
 
   function runNerdSearch() {
@@ -146,7 +178,13 @@ Item {
     } else {
       selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
     }
-    resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+    positionSelected()
+  }
+
+  // Up/Down step one entry per line in the kaomoji list, one grid row
+  // (columns entries) in the pickers.
+  function rowStep() {
+    return root.mode === "kaomoji" ? 1 : columns
   }
 
   function selectRow(delta) {
@@ -154,14 +192,14 @@ Item {
     if (!cursorActive) {
       cursorActive = true
       selectedIndex = delta < 0 ? displayModel.count - 1 : 0
-      resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+      positionSelected()
       return
     }
-    var newIndex = selectedIndex + delta * columns
+    var newIndex = selectedIndex + delta * rowStep()
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
-    resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+    positionSelected()
   }
 
   function selectPage(delta) {
@@ -169,22 +207,24 @@ Item {
     if (!cursorActive) {
       cursorActive = true
       selectedIndex = delta < 0 ? displayModel.count - 1 : 0
-      resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+      positionSelected()
       return
     }
-    var visibleRows = Math.max(1, Math.floor(resultGrid.height / cellHeight))
-    var newIndex = selectedIndex + delta * columns * visibleRows
+    var viewHeight = root.mode === "kaomoji" ? kaomojiList.height : resultGrid.height
+    var rowHeight = root.mode === "kaomoji" ? listRowHeight : cellHeight
+    var visibleRows = Math.max(1, Math.floor(viewHeight / rowHeight))
+    var newIndex = selectedIndex + delta * rowStep() * visibleRows
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
-    resultGrid.positionViewAtIndex(selectedIndex, GridView.Contain)
+    positionSelected()
   }
 
   function setMode(nextMode) {
     if (root.mode === nextMode) return
     root.mode = nextMode
     // Keep the filter across switches so Tab compares the same query
-    // in both datasets.
+    // in every dataset.
     root.selectedIndex = 0
     root.cursorActive = true
     root.rebuildDisplay()
@@ -236,6 +276,22 @@ Item {
   FileView {
     path: Qt.resolvedUrl("emojis.json")
     onLoaded: root.loadEmojis(text())
+  }
+
+  // kaomoji.tsv reads on first tab activation: preload stays false so
+  // assigning path never loads; the first text() call then reads the
+  // (tiny) file synchronously via blockLoading. onLoaded covers the
+  // case where the read still settles asynchronously.
+  FileView {
+    id: kaomojiFile
+    preload: false
+    blockLoading: true
+    path: Qt.resolvedUrl("kaomoji.tsv")
+
+    onLoaded: {
+      root.kaomojiRows = EmojiSearch.parseKaomojiTsv(text())
+      if (root.opened && root.mode === "kaomoji") root.rebuildDisplay()
+    }
   }
 
   Timer {
@@ -313,7 +369,8 @@ Item {
             else root.dismiss()
             event.accepted = true
           } else if (event.key === Qt.Key_Tab) {
-            root.setMode(root.mode === "nerd" ? "emoji" : "nerd")
+            var next = root.modeOrder[(root.modeOrder.indexOf(root.mode) + 1) % root.modeOrder.length]
+            root.setMode(next)
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
@@ -373,7 +430,8 @@ Item {
           Repeater {
             model: [
               { key: "emoji", label: "Emojis" },
-              { key: "nerd", label: "Nerd Fonts" }
+              { key: "nerd", label: "Nerd Fonts" },
+              { key: "kaomoji", label: "Kaomoji" }
             ]
 
             delegate: Rectangle {
@@ -421,7 +479,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.filterText
                   || (root.mode === "nerd" ? "Search Nerd Fonts…"
-                                            : "Search emojis…  ( ! switches to Nerd Fonts )")
+                     : root.mode === "kaomoji" ? "Search kaomoji by tag…"
+                                               : "Search emojis…  ( ! switches to Nerd Fonts )")
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
@@ -437,6 +496,7 @@ Item {
           GridView {
             id: resultGrid
             anchors.fill: parent
+            visible: root.mode !== "kaomoji"
             model: displayModel
             clip: true
             cellWidth: root.cellWidth
@@ -489,6 +549,75 @@ Item {
             }
           }
 
+          ListView {
+            id: kaomojiList
+            anchors.fill: parent
+            visible: root.mode === "kaomoji"
+            model: displayModel
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            delegate: Rectangle {
+              id: kaomojiRow
+
+              required property int index
+              required property string emoji
+              required property string tags
+
+              readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+
+              width: kaomojiList.width
+              height: root.listRowHeight
+              color: hasCursor ? root.selectedBackground : "transparent"
+
+              Text {
+                // The kaomoji itself, left-aligned; capped so long ones
+                // never reach the centered tag column.
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(parent.width * 0.42, implicitWidth)
+                text: kaomojiRow.emoji
+                color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.title
+                elide: Text.ElideRight
+              }
+
+              Text {
+                // Tag column pinned to the panel's horizontal center so
+                // it lines up across rows; kept visually secondary.
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(parent.width * 0.5, implicitWidth)
+                text: kaomojiRow.tags
+                color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
+                opacity: kaomojiRow.hasCursor ? 0.75 : 0.5
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) {
+                  root.cursorActive = true
+                  root.selectedIndex = kaomojiRow.index
+                }
+                onClicked: function(mouse) {
+                  root.cursorActive = true
+                  root.selectedIndex = kaomojiRow.index
+                  if (mouse.button === Qt.RightButton)
+                    root.copyIndex(kaomojiRow.index)
+                  else
+                    root.activateIndex(kaomojiRow.index)
+                }
+              }
+            }
+          }
+
           Column {
             anchors.centerIn: parent
             spacing: Style.space(8)
@@ -505,7 +634,9 @@ Item {
             }
 
             Text {
-              text: "No matches for “" + root.filterText + "”"
+              text: root.mode === "kaomoji" && root.kaomojiRows === null
+                    ? "Loading kaomoji…"
+                    : "No matches for “" + root.filterText + "”"
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily

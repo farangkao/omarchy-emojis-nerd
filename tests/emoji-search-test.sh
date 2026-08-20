@@ -71,5 +71,35 @@ assert.deepStrictEqual(
 )
 assert.deepStrictEqual(EmojiSearch.filterTsvRows(tsvRows, ["nomatch"], 100), [])
 
+// parseKaomojiTsv: tags <TAB> string rows, junk tolerated
+const kaomojiTsv = [
+  "hide\t(⊃‿⊂)",
+  "hide wave\t川o･-･)ﾉ",
+  "table flip\t(╯°□°）╯︵ ┻━┻",
+  "",
+  "notabline",
+  "tags-without-string\t",
+]
+const kaomoji = EmojiSearch.parseKaomojiTsv(kaomojiTsv.join("\n"))
+assert.strictEqual(kaomoji.length, 3)
+assert.deepStrictEqual(kaomoji[1], { e: "川o･-･)ﾉ", k: "hide wave", tags: "hide wave" })
+assert.deepStrictEqual(EmojiSearch.parseKaomojiTsv(""), [])
+assert.deepStrictEqual(EmojiSearch.parseKaomojiTsv(null), [])
+
+// filterEmojis drives kaomoji search too: token-AND over tags
+let kout = EmojiSearch.filterEmojis(kaomoji, "hide", 100)
+assert.strictEqual(kout.length, 2)
+kout = EmojiSearch.filterEmojis(kaomoji, "hide wave", 100)
+assert.strictEqual(kout.length, 1)
+assert.strictEqual(kout[0].e, "川o･-･)ﾉ")
+assert.strictEqual(EmojiSearch.filterEmojis(kaomoji, "flip", 100).length, 1)
+assert.strictEqual(EmojiSearch.filterEmojis(kaomoji, "hide flip", 100).length, 0)
+
+// formatKaomojiTags: "[tag1, tag2]" for the centered tag column
+assert.strictEqual(EmojiSearch.formatKaomojiTags("hide wave"), "[hide, wave]")
+assert.strictEqual(EmojiSearch.formatKaomojiTags("hide"), "[hide]")
+assert.strictEqual(EmojiSearch.formatKaomojiTags(undefined), "")
+assert.strictEqual(EmojiSearch.formatKaomojiTags(kaomoji[1].tags), "[hide, wave]")
+
 console.log("emoji-search-test: all assertions passed")
 EOF

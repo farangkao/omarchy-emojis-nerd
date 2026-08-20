@@ -1,28 +1,33 @@
 # Emojis & Nerd Fonts for Omarchy
 
-An emoji **and** Nerd Font glyph picker for [Omarchy](https://omarchy.org) —
-a drop-in replacement for the built-in emoji picker. SUPER+CTRL+E keeps
-working; it just opens this picker instead.
+An emoji, kaomoji, **and** Nerd Font glyph picker for
+[Omarchy](https://omarchy.org) — a drop-in replacement for the built-in
+emoji picker. SUPER+CTRL+E keeps working; it just opens this picker instead.
 
 > **Acknowledgment:** this plugin was heavily developed with AI assistance
 > (GLM-5.3). All code has been reviewed and tested by the repository owner.
 
-![Emojis & Nerd Fonts picker](preview.png)
+![Emojis, Kaomoji & Nerd Fonts picker](preview.png)
 
 ## Features
 
-- **Two datasets, one popup** — 1,800+ emojis and 10,600+ Nerd Font glyphs
+- **Three datasets, one popup** — 1,800+ emojis, 10,600+ Nerd Font glyphs,
+  and 1,500+ kaomoji (Japanese emoticons)
 - **`!house` flips to Nerd Fonts instantly** — the leading `!` is a sticky
-  mode switch; **Tab** or the header tabs switch back and forth
+  mode switch; **Tab** or the header tabs cycle emoji → Nerd Fonts → kaomoji
 - **Multi-word search** — every word must match, so `md home` finds
-  `nf-md-home`
+  `nf-md-home`, and kaomoji tags combine: `table flip` or `happy wave`
 - **Named glyphs** — in Nerd Fonts mode the footer shows the selected
-  glyph's official name (`nf-md-home`), handy for configs and prompts
+  glyph's official name (`nf-md-home`), handy for configs and prompts;
+  kaomoji show their tags next to each entry
 - **Type or copy** — Enter or left-click types the glyph into the focused
   app; Ctrl+Enter or right-click copies it to the clipboard (it stays
   pasteable and enters the clipboard history)
 - **Full keyboard navigation** — arrows, PageUp/PageDown, Escape
 - **Theme-aware** — follows your Omarchy theme, light or dark
+- **Light footprint** — the kaomoji dataset loads on first use of its tab,
+  and Nerd Font search streams from disk, so startup stays as fast as the
+  built-in picker
 
 ## How it replaces the built-in picker
 
@@ -82,9 +87,9 @@ Removal re-enables the built-in emoji picker.
 
 | Input | Action |
 | --- | --- |
-| Type text | Search the active dataset |
+| Type text | Search the active dataset (kaomoji search matches tags) |
 | `!` + text | Switch to Nerd Fonts and search (`!house`) |
-| Tab | Toggle emojis ↔ Nerd Fonts (the filter is kept) |
+| Tab | Cycle emojis → Nerd Fonts → kaomoji (the filter is kept) |
 | Header tabs | Switch modes with the mouse |
 | Arrow keys / PageUp / PageDown | Move the cursor |
 | Enter | Type the selected glyph into the focused app |
@@ -127,7 +132,18 @@ into memory: only the visible page of results is ever resident, and a
 regenerated dataset applies on the next search with no shell restart.
 Emojis (108 KB) stay in memory for instant as-you-type filtering.
 
+### Kaomoji
+
+`kaomoji.tsv` is generated from
+[w33ble/emoticon-data](https://github.com/w33ble/emoticon-data)
+(`emoticons.json`; ids dropped, one kaomoji per line: tags, string). The
+file parses on the first activation of the kaomoji tab — never at shell
+startup — into ~1,500 rows held in memory, searched with the same
+token-AND semantics (tags only), so `table flip` finds table-flips and
+`happy love` narrows to kaomoji tagged with both. Rebuild it (rarely
+needed; upstream is dormant) with `python3 tools/convert_kaomoji.py`.
+
 ## License
 
-[MIT](LICENSE) — with notices for Omarchy and Nerd Fonts in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE) — with notices for Omarchy, Nerd Fonts, and emoticon-data
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
