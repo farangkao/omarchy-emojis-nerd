@@ -18,7 +18,7 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: false
   property var emojis: []
-  property string mode: "emoji"
+  property string mode: "recent"
 
   // Nerd Font search streams from nerdfonts.tsv via grep instead of
   // holding the whole dataset in memory: only matched rows are resident.
@@ -34,7 +34,13 @@ Item {
   // ~1.5k short rows, unlike the grep-streamed nerd dataset. Null until
   // that first load lands.
   property var kaomojiRows: null
-  readonly property var modeOrder: ["emoji", "nerd", "kaomoji"]
+
+  // MRU of type/copy picks across emoji, nerd, and kaomoji. Persisted
+  // next to Omarchy clipboard history under ~/.local/state/omarchy/.
+  property var recentRows: []
+  readonly property int recentLimit: 48
+  readonly property string recentPath: Quickshell.env("HOME") + "/.local/state/omarchy/emojis-nerd-recents.json"
+  readonly property var modeOrder: ["recent", "emoji", "nerd", "kaomoji"]
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -64,7 +70,7 @@ Item {
 
   function open(payloadJson) {
     root.opened = true
-    root.mode = "emoji"
+    root.mode = "recent"
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
@@ -111,6 +117,11 @@ Item {
       fillDisplay(EmojiSearch.filterEmojis(root.kaomojiRows, root.filterText, 1000))
       return
     }
+    if (root.mode === "recent") {
+      root.selectedIndex = 0
+      fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText, root.recentLimit))
+      return
+    }
     fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
   }
 
@@ -121,7 +132,9 @@ Item {
         emoji: out[j].e,
         index: j,
         name: (out[j].n || ""),
-        tags: EmojiSearch.formatKaomojiTags(out[j].tags)
+        tags: EmojiSearch.formatKaomojiTags(out[j].tags),
+        rawTags: (out[j].tags || ""),
+        keywords: (out[j].k || "")
       })
     }
 
@@ -247,13 +260,35 @@ Item {
   function activateIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
+    root.rememberPick(row)
     root.applySelected(row.emoji)
   }
 
   function copyIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
+    root.rememberPick(row)
     root.copySelected(row.emoji)
+  }
+
+  function rememberPick(row) {
+    if (!row || !row.emoji) return
+    root.recentRows = EmojiSearch.rememberRecent(root.recentRows, {
+      e: row.emoji,
+      k: row.keywords || "",
+      n: row.name || "",
+      tags: row.rawTags || ""
+    }, root.recentLimit)
+    root.saveRecents()
+  }
+
+  function loadRecents(raw) {
+    root.recentRows = EmojiSearch.parseRecents(raw)
+    if (root.opened && root.mode === "recent") root.rebuildDisplay()
+  }
+
+  function saveRecents() {
+    recentFile.setText(JSON.stringify(root.recentRows.slice(0, root.recentLimit), null, 2) + "\n")
   }
 
   function applySelected(emoji) {
@@ -276,6 +311,16 @@ Item {
   FileView {
     path: Qt.resolvedUrl("emojis.json")
     onLoaded: root.loadEmojis(text())
+  }
+
+  FileView {
+    id: recentFile
+    path: root.recentPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadRecents(text())
+    onLoadFailed: root.loadRecents("[]")
   }
 
   // kaomoji.tsv reads on first tab activation: preload stays false so
@@ -429,6 +474,7 @@ Item {
 
           Repeater {
             model: [
+              { key: "recent", label: "Recents" },
               { key: "emoji", label: "Emojis" },
               { key: "nerd", label: "Nerd Fonts" },
               { key: "kaomoji", label: "Kaomoji" }
@@ -480,6 +526,7 @@ Item {
             text: root.filterText
                   || (root.mode === "nerd" ? "Search Nerd Fonts…"
                      : root.mode === "kaomoji" ? "Search kaomoji by tag…"
+                     : root.mode === "recent" ? "Search recent…"
                                                : "Search emojis…  ( ! switches to Nerd Fonts )")
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
@@ -636,7 +683,11 @@ Item {
             Text {
               text: root.mode === "kaomoji" && root.kaomojiRows === null
                     ? "Loading kaomoji…"
-                    : "No matches for “" + root.filterText + "”"
+                    : root.mode === "recent" && !root.filterText && root.recentRows.length === 0
+                    ? "No recent picks yet"
+                    : root.filterText
+                    ? "No matches for “" + root.filterText + "”"
+                    : "No matches"
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily

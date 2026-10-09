@@ -125,6 +125,54 @@ function filterTsvRows(rows, tokens, limit) {
   return out
 }
 
+// Recents are a small MRU list of { e, k, n?, tags? } persisted as JSON.
+// Equality is by glyph string (e) so re-picking bumps an entry to the front.
+function normalizeRecent(item) {
+  if (!item || item.e === undefined || item.e === null || item.e === "") return null
+  var entry = { e: String(item.e), k: String(item.k || "").toLowerCase() }
+  if (item.n) entry.n = String(item.n)
+  if (item.tags) entry.tags = String(item.tags)
+  // Fold name/tags into k so filterEmojis can search them without a
+  // separate code path (nerd names, kaomoji tags).
+  var extra = ((entry.n || "") + " " + (entry.tags || "")).toLowerCase().trim()
+  if (extra && entry.k.indexOf(extra) < 0)
+    entry.k = (entry.k ? entry.k + " " : "") + extra
+  return entry
+}
+
+function parseRecents(raw) {
+  try {
+    var data = JSON.parse(String(raw || ""))
+    if (!Array.isArray(data)) return []
+    var out = []
+    for (var i = 0; i < data.length; i++) {
+      var entry = normalizeRecent(data[i])
+      if (entry) out.push(entry)
+    }
+    return out
+  } catch (e) {
+    return []
+  }
+}
+
+function rememberRecent(list, item, limit) {
+  var entry = normalizeRecent(item)
+  if (!entry) return Array.isArray(list) ? list.slice() : []
+  var max = limit === undefined || limit === null ? 48 : Number(limit)
+  if (isNaN(max) || max < 0) max = 48
+  if (max === 0) return []
+
+  var out = [entry]
+  var values = Array.isArray(list) ? list : []
+  for (var i = 0; i < values.length; i++) {
+    var prev = normalizeRecent(values[i])
+    if (!prev || prev.e === entry.e) continue
+    out.push(prev)
+    if (out.length >= max) break
+  }
+  return out
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseEmojis: parseEmojis,
@@ -135,6 +183,9 @@ if (typeof module !== "undefined") {
     parseKaomojiTsv: parseKaomojiTsv,
     formatKaomojiTags: formatKaomojiTags,
     parseTsvLine: parseTsvLine,
-    filterTsvRows: filterTsvRows
+    filterTsvRows: filterTsvRows,
+    normalizeRecent: normalizeRecent,
+    parseRecents: parseRecents,
+    rememberRecent: rememberRecent
   }
 }

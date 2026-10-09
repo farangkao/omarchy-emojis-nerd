@@ -98,6 +98,31 @@ assert.strictEqual(EmojiSearch.filterEmojis(kaomoji, "hide flip", 100).length, 0
 // formatKaomojiTags: "[tag1, tag2]" for the centered tag column
 assert.strictEqual(EmojiSearch.formatKaomojiTags("hide wave"), "[hide, wave]")
 assert.strictEqual(EmojiSearch.formatKaomojiTags("hide"), "[hide]")
+
+// parseRecents / rememberRecent: MRU by glyph string, capped
+assert.deepStrictEqual(EmojiSearch.parseRecents("[]"), [])
+assert.deepStrictEqual(EmojiSearch.parseRecents("not json"), [])
+assert.deepStrictEqual(EmojiSearch.parseRecents(null), [])
+const recentsIn = [
+  { e: "😀", k: "grinning face" },
+  { e: "", k: "skip empty" },
+  { e: "🏠", n: "nf-md-home", k: "home house" },
+]
+const parsedRecents = EmojiSearch.parseRecents(JSON.stringify(recentsIn))
+assert.strictEqual(parsedRecents.length, 2)
+assert.strictEqual(parsedRecents[0].e, "😀")
+assert.ok(parsedRecents[1].k.indexOf("nf-md-home") >= 0)
+
+let recents = EmojiSearch.rememberRecent([], { e: "😀", k: "grin" }, 3)
+recents = EmojiSearch.rememberRecent(recents, { e: "🔥", k: "fire" }, 3)
+recents = EmojiSearch.rememberRecent(recents, { e: "😀", k: "grinning" }, 3)
+assert.deepStrictEqual(recents.map(r => r.e), ["😀", "🔥"])
+recents = EmojiSearch.rememberRecent(recents, { e: "✨", k: "sparkles" }, 3)
+recents = EmojiSearch.rememberRecent(recents, { e: "💡", k: "bulb" }, 3)
+assert.deepStrictEqual(recents.map(r => r.e), ["💡", "✨", "😀"])
+assert.deepStrictEqual(EmojiSearch.rememberRecent(recents, { e: "" }, 3).map(r => r.e), ["💡", "✨", "😀"])
+assert.deepStrictEqual(EmojiSearch.rememberRecent(recents, { e: "x" }, 0), [])
+assert.strictEqual(EmojiSearch.filterEmojis(recents, "spark", 10).length, 1)
 assert.strictEqual(EmojiSearch.formatKaomojiTags(undefined), "")
 assert.strictEqual(EmojiSearch.formatKaomojiTags(kaomoji[1].tags), "[hide, wave]")
 
