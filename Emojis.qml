@@ -143,7 +143,8 @@ Item {
         name: (out[j].n || ""),
         tags: EmojiSearch.formatKaomojiTags(out[j].tags),
         rawTags: (out[j].tags || ""),
-        keywords: (out[j].k || "")
+        keywords: (out[j].k || ""),
+        hint: root.mode === "recent" ? EmojiSearch.recentHint(out[j]) : ""
       })
     }
 
@@ -443,6 +444,14 @@ Item {
             var count = root.modeOrder.length
             root.setMode(root.modeOrder[(root.modeOrder.indexOf(root.mode) + step + count) % count])
             event.accepted = true
+          } else if (root.mode === "recent" && (event.modifiers & Qt.AltModifier)
+                     && EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode) >= 0) {
+            // Alt+1…9/0 types one of the first ten Recents shown (search
+            // or not); with Shift it copies instead.
+            var hotkey = EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode)
+            if (event.modifiers & Qt.ShiftModifier) root.copyIndex(hotkey)
+            else root.activateIndex(hotkey)
+            event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
@@ -641,6 +650,7 @@ Item {
               required property int index
               required property string emoji
               required property string tags
+              required property string hint
 
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
@@ -649,19 +659,51 @@ Item {
               color: hasCursor ? root.selectedBackground : "transparent"
 
               Text {
+                id: rowGlyph
                 // The glyph, left-aligned. On the kaomoji tab it is capped
-                // so long ones never reach the centered tag column; Recents
-                // has no tag column, so the glyph gets the whole row.
+                // so long ones never reach the centered tag column; on
+                // Recents it leaves room for the hint and hotkey.
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.mode === "recent"
-                       ? parent.width
+                       ? Math.min(parent.width - hotkeyText.width - Style.spacing.md, implicitWidth)
                        : Math.min(parent.width * 0.42, implicitWidth)
                 text: kaomojiRow.emoji
                 color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
                 elide: Text.ElideRight
+              }
+
+              Text {
+                // Recents: what the glyph is (Nerd Font name, kaomoji
+                // tags, emoji keywords), dimmed between glyph and hotkey.
+                visible: root.mode === "recent" && text !== ""
+                anchors.left: rowGlyph.right
+                anchors.leftMargin: Style.spacing.md
+                anchors.right: hotkeyText.left
+                anchors.rightMargin: Style.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+                text: kaomojiRow.hint
+                color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
+                opacity: kaomojiRow.hasCursor ? 0.75 : 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+              }
+
+              Text {
+                // Alt+digit hotkey for the first ten Recents rows.
+                id: hotkeyText
+                anchors.right: parent.right
+                anchors.rightMargin: Style.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.mode === "recent" ? EmojiSearch.hotkeyLabel(kaomojiRow.index) : ""
+                width: text ? implicitWidth : 0
+                color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
+                opacity: kaomojiRow.hasCursor ? 0.75 : 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
               }
 
               Text {

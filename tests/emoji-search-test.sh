@@ -126,5 +126,20 @@ assert.strictEqual(EmojiSearch.filterEmojis(recents, "spark", 10).length, 1)
 assert.strictEqual(EmojiSearch.formatKaomojiTags(undefined), "")
 assert.strictEqual(EmojiSearch.formatKaomojiTags(kaomoji[1].tags), "[hide, wave]")
 
+// Recents hint: nerd name, then kaomoji tags, then emoji keywords
+assert.strictEqual(EmojiSearch.recentHint({ e: "\uf015", n: "nf-fa-home", k: "home" }), "nf-fa-home")
+assert.strictEqual(EmojiSearch.recentHint({ e: "|_・)", tags: "hide wave", k: "hide wave" }), "[hide, wave]")
+assert.strictEqual(EmojiSearch.recentHint({ e: "🔥", k: "fire flame" }), "fire flame")
+assert.strictEqual(EmojiSearch.recentHint(null), "")
+
+// Alt+digit hotkeys: scan codes 10–19 are 1…0 whatever the layout or Shift
+assert.strictEqual(EmojiSearch.hotkeyIndex(0x21, 10), 0)   // Shift+1 arrives as "!"
+assert.strictEqual(EmojiSearch.hotkeyIndex(0, 18), 8)
+assert.strictEqual(EmojiSearch.hotkeyIndex(0, 19), 9)
+assert.strictEqual(EmojiSearch.hotkeyIndex(0x35, 0), 4)    // key-only fallback
+assert.strictEqual(EmojiSearch.hotkeyIndex(0x30, 0), 9)
+assert.strictEqual(EmojiSearch.hotkeyIndex(0x41, 38), -1)  // A
+assert.deepStrictEqual([0, 8, 9, 10].map(EmojiSearch.hotkeyLabel), ["1", "9", "0", ""])
+
 console.log("emoji-search-test: all assertions passed")
 EOF

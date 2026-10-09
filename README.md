@@ -99,6 +99,8 @@ Removal re-enables the built-in emoji picker.
 | Arrow keys / PageUp / PageDown | Move the cursor |
 | Enter | Type the selected glyph into the focused app |
 | Ctrl+Enter | Copy the selected glyph to the clipboard |
+| Alt+1…9, Alt+0 | Recents: type one of the first ten shown (search or not) |
+| Alt+Shift+1…9, Alt+Shift+0 | Recents: copy one of the first ten shown |
 | Left click | Type the glyph |
 | Right click | Copy the glyph |
 | Escape | Clear the filter, then close |
