@@ -11,10 +11,14 @@ emoji picker. SUPER+CTRL+E keeps working; it just opens this picker instead.
 
 ## Features
 
+- **Recents first** — once you have picked something, the picker opens on a
+  Recents list of what you recently typed or copied, one full-width row each
+  so long kaomoji fit (persisted under
+  `~/.local/state/omarchy/emojis-nerd-recents.json`)
 - **Three datasets, one popup** — 1,800+ emojis, 10,600+ Nerd Font glyphs,
   and 1,500+ kaomoji (Japanese emoticons)
 - **`!house` flips to Nerd Fonts instantly** — the leading `!` is a sticky
-  mode switch; **Tab** or the header tabs cycle emoji → Nerd Fonts → kaomoji
+  mode switch; **Tab** or the header tabs cycle Recents → emoji → Nerd Fonts → kaomoji
 - **Multi-word search** — every word must match, so `md home` finds
   `nf-md-home`, and kaomoji tags combine: `table flip` or `happy wave`
 - **Named glyphs** — in Nerd Fonts mode the footer shows the selected
@@ -89,7 +93,8 @@ Removal re-enables the built-in emoji picker.
 | --- | --- |
 | Type text | Search the active dataset (kaomoji search matches tags) |
 | `!` + text | Switch to Nerd Fonts and search (`!house`) |
-| Tab | Cycle emojis → Nerd Fonts → kaomoji (the filter is kept) |
+| Tab | Cycle Recents → emojis → Nerd Fonts → kaomoji (the filter is kept) |
+| Shift+Tab | Cycle the modes backwards |
 | Header tabs | Switch modes with the mouse |
 | Arrow keys / PageUp / PageDown | Move the cursor |
 | Enter | Type the selected glyph into the focused app |

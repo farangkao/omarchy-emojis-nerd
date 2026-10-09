@@ -18,7 +18,7 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: false
   property var emojis: []
-  property string mode: "emoji"
+  property string mode: "recent"
 
   // Nerd Font search streams from nerdfonts.tsv via grep instead of
   // holding the whole dataset in memory: only matched rows are resident.
@@ -34,7 +34,20 @@ Item {
   // ~1.5k short rows, unlike the grep-streamed nerd dataset. Null until
   // that first load lands.
   property var kaomojiRows: null
-  readonly property var modeOrder: ["emoji", "nerd", "kaomoji"]
+
+  // MRU of type/copy picks across emoji, nerd, and kaomoji. Persisted
+  // next to Omarchy clipboard history under ~/.local/state/omarchy/.
+  property var recentRows: []
+  readonly property int recentLimit: 48
+  readonly property string recentPath: Quickshell.env("HOME") + "/.local/state/omarchy/emojis-nerd-recents.json"
+  readonly property var modeOrder: ["recent", "emoji", "nerd", "kaomoji"]
+  // Recents can include long kaomoji, so they share the full-width list
+  // layout with the Kaomoji tab instead of the tight emoji grid.
+  readonly property bool listMode: root.mode === "kaomoji" || root.mode === "recent"
+  // Rows that fit in the list view. Recents spill into a second column
+  // (filled top to bottom) once they no longer fit in one.
+  readonly property int listRows: Math.max(1, Math.floor(kaomojiList.height / root.listRowHeight))
+  readonly property bool recentSplit: root.mode === "recent" && displayModel.count > root.listRows
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -64,7 +77,9 @@ Item {
 
   function open(payloadJson) {
     root.opened = true
-    root.mode = "emoji"
+    // Land on Recents once there is something in it; a fresh install
+    // still opens on the full emoji grid.
+    root.mode = root.recentRows.length > 0 ? "recent" : "emoji"
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
@@ -111,6 +126,11 @@ Item {
       fillDisplay(EmojiSearch.filterEmojis(root.kaomojiRows, root.filterText, 1000))
       return
     }
+    if (root.mode === "recent") {
+      root.selectedIndex = 0
+      fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText, root.recentLimit))
+      return
+    }
     fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
   }
 
@@ -121,7 +141,9 @@ Item {
         emoji: out[j].e,
         index: j,
         name: (out[j].n || ""),
-        tags: EmojiSearch.formatKaomojiTags(out[j].tags)
+        tags: EmojiSearch.formatKaomojiTags(out[j].tags),
+        rawTags: (out[j].tags || ""),
+        keywords: (out[j].k || "")
       })
     }
 
@@ -136,7 +158,7 @@ Item {
   }
 
   function positionSelected() {
-    if (root.mode === "kaomoji") kaomojiList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    if (root.listMode) kaomojiList.positionViewAtIndex(root.selectedIndex, GridView.Contain)
     else resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
   }
 
@@ -181,10 +203,10 @@ Item {
     positionSelected()
   }
 
-  // Up/Down step one entry per line in the kaomoji list, one grid row
-  // (columns entries) in the pickers.
+  // Up/Down step one entry per line in list modes (kaomoji, recents),
+  // one grid row (columns entries) in the emoji and Nerd Font pickers.
   function rowStep() {
-    return root.mode === "kaomoji" ? 1 : columns
+    return root.listMode ? 1 : columns
   }
 
   function selectRow(delta) {
@@ -202,6 +224,20 @@ Item {
     positionSelected()
   }
 
+  // Left/Right jump a whole column in the split Recents view.
+  function selectColumn(delta) {
+    if (!root.recentSplit) {
+      root.select(delta)
+      return
+    }
+    if (displayModel.count === 0) return
+    var newIndex = selectedIndex + delta * root.listRows
+    if (newIndex < 0 || newIndex >= displayModel.count) return
+    selectedIndex = newIndex
+    cursorActive = true
+    positionSelected()
+  }
+
   function selectPage(delta) {
     if (displayModel.count === 0) return
     if (!cursorActive) {
@@ -210,8 +246,8 @@ Item {
       positionSelected()
       return
     }
-    var viewHeight = root.mode === "kaomoji" ? kaomojiList.height : resultGrid.height
-    var rowHeight = root.mode === "kaomoji" ? listRowHeight : cellHeight
+    var viewHeight = root.listMode ? kaomojiList.height : resultGrid.height
+    var rowHeight = root.listMode ? listRowHeight : cellHeight
     var visibleRows = Math.max(1, Math.floor(viewHeight / rowHeight))
     var newIndex = selectedIndex + delta * rowStep() * visibleRows
     if (newIndex < 0) newIndex = 0
@@ -247,13 +283,35 @@ Item {
   function activateIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
+    root.rememberPick(row)
     root.applySelected(row.emoji)
   }
 
   function copyIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
+    root.rememberPick(row)
     root.copySelected(row.emoji)
+  }
+
+  function rememberPick(row) {
+    if (!row || !row.emoji) return
+    root.recentRows = EmojiSearch.rememberRecent(root.recentRows, {
+      e: row.emoji,
+      k: row.keywords || "",
+      n: row.name || "",
+      tags: row.rawTags || ""
+    }, root.recentLimit)
+    root.saveRecents()
+  }
+
+  function loadRecents(raw) {
+    root.recentRows = EmojiSearch.parseRecents(raw)
+    if (root.opened && root.mode === "recent") root.rebuildDisplay()
+  }
+
+  function saveRecents() {
+    recentFile.setText(JSON.stringify(root.recentRows.slice(0, root.recentLimit), null, 2) + "\n")
   }
 
   function applySelected(emoji) {
@@ -276,6 +334,16 @@ Item {
   FileView {
     path: Qt.resolvedUrl("emojis.json")
     onLoaded: root.loadEmojis(text())
+  }
+
+  FileView {
+    id: recentFile
+    path: root.recentPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadRecents(text())
+    onLoadFailed: root.loadRecents("[]")
   }
 
   // kaomoji.tsv reads on first tab activation: preload stays false so
@@ -368,18 +436,21 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.dismiss()
             event.accepted = true
-          } else if (event.key === Qt.Key_Tab) {
-            var next = root.modeOrder[(root.modeOrder.indexOf(root.mode) + 1) % root.modeOrder.length]
-            root.setMode(next)
+          } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            // Shift+Tab cycles backwards. It usually arrives as Backtab,
+            // but some input paths send Tab with the Shift modifier.
+            var step = event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1
+            var count = root.modeOrder.length
+            root.setMode(root.modeOrder[(root.modeOrder.indexOf(root.mode) + step + count) % count])
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Left) {
-            root.select(-1)
+            root.selectColumn(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Right) {
-            root.select(1)
+            root.selectColumn(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.selectRow(-1)
@@ -429,6 +500,7 @@ Item {
 
           Repeater {
             model: [
+              { key: "recent", label: "Recents" },
               { key: "emoji", label: "Emojis" },
               { key: "nerd", label: "Nerd Fonts" },
               { key: "kaomoji", label: "Kaomoji" }
@@ -480,6 +552,7 @@ Item {
             text: root.filterText
                   || (root.mode === "nerd" ? "Search Nerd Fonts…"
                      : root.mode === "kaomoji" ? "Search kaomoji by tag…"
+                     : root.mode === "recent" ? "Search recent…"
                                                : "Search emojis…  ( ! switches to Nerd Fonts )")
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
@@ -496,7 +569,7 @@ Item {
           GridView {
             id: resultGrid
             anchors.fill: parent
-            visible: root.mode !== "kaomoji"
+            visible: !root.listMode
             model: displayModel
             clip: true
             cellWidth: root.cellWidth
@@ -549,13 +622,18 @@ Item {
             }
           }
 
-          ListView {
+          // A one-column grid acts as the kaomoji list; Recents switch to
+          // two half-width columns when they overflow.
+          GridView {
             id: kaomojiList
             anchors.fill: parent
-            visible: root.mode === "kaomoji"
+            visible: root.listMode
             model: displayModel
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            flow: root.recentSplit ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
+            cellWidth: root.recentSplit ? Math.floor(width / 2) : width
+            cellHeight: root.listRowHeight
 
             delegate: Rectangle {
               id: kaomojiRow
@@ -566,16 +644,19 @@ Item {
 
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
-              width: kaomojiList.width
+              width: kaomojiList.cellWidth
               height: root.listRowHeight
               color: hasCursor ? root.selectedBackground : "transparent"
 
               Text {
-                // The kaomoji itself, left-aligned; capped so long ones
-                // never reach the centered tag column.
+                // The glyph, left-aligned. On the kaomoji tab it is capped
+                // so long ones never reach the centered tag column; Recents
+                // has no tag column, so the glyph gets the whole row.
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(parent.width * 0.42, implicitWidth)
+                width: root.mode === "recent"
+                       ? parent.width
+                       : Math.min(parent.width * 0.42, implicitWidth)
                 text: kaomojiRow.emoji
                 color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
                 font.family: root.fontFamily
@@ -586,6 +667,7 @@ Item {
               Text {
                 // Tag column pinned to the panel's horizontal center so
                 // it lines up across rows; kept visually secondary.
+                visible: root.mode !== "recent"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(parent.width * 0.5, implicitWidth)
@@ -636,7 +718,11 @@ Item {
             Text {
               text: root.mode === "kaomoji" && root.kaomojiRows === null
                     ? "Loading kaomoji…"
-                    : "No matches for “" + root.filterText + "”"
+                    : root.mode === "recent" && !root.filterText && root.recentRows.length === 0
+                    ? "No recent picks yet"
+                    : root.filterText
+                    ? "No matches for “" + root.filterText + "”"
+                    : "No matches"
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily
