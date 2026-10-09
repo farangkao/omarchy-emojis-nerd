@@ -44,6 +44,10 @@ Item {
   // Recents can include long kaomoji, so they share the full-width list
   // layout with the Kaomoji tab instead of the tight emoji grid.
   readonly property bool listMode: root.mode === "kaomoji" || root.mode === "recent"
+  // Rows that fit in the list view. Recents spill into a second column
+  // (filled top to bottom) once they no longer fit in one.
+  readonly property int listRows: Math.max(1, Math.floor(kaomojiList.height / root.listRowHeight))
+  readonly property bool recentSplit: root.mode === "recent" && displayModel.count > root.listRows
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -154,7 +158,7 @@ Item {
   }
 
   function positionSelected() {
-    if (root.listMode) kaomojiList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    if (root.listMode) kaomojiList.positionViewAtIndex(root.selectedIndex, GridView.Contain)
     else resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
   }
 
@@ -217,6 +221,20 @@ Item {
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
+    positionSelected()
+  }
+
+  // Left/Right jump a whole column in the split Recents view.
+  function selectColumn(delta) {
+    if (!root.recentSplit) {
+      root.select(delta)
+      return
+    }
+    if (displayModel.count === 0) return
+    var newIndex = selectedIndex + delta * root.listRows
+    if (newIndex < 0 || newIndex >= displayModel.count) return
+    selectedIndex = newIndex
+    cursorActive = true
     positionSelected()
   }
 
@@ -426,10 +444,10 @@ Item {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Left) {
-            root.select(-1)
+            root.selectColumn(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Right) {
-            root.select(1)
+            root.selectColumn(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.selectRow(-1)
@@ -601,13 +619,18 @@ Item {
             }
           }
 
-          ListView {
+          // A one-column grid acts as the kaomoji list; Recents switch to
+          // two half-width columns when they overflow.
+          GridView {
             id: kaomojiList
             anchors.fill: parent
             visible: root.listMode
             model: displayModel
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            flow: root.recentSplit ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
+            cellWidth: root.recentSplit ? Math.floor(width / 2) : width
+            cellHeight: root.listRowHeight
 
             delegate: Rectangle {
               id: kaomojiRow
@@ -618,7 +641,7 @@ Item {
 
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
-              width: kaomojiList.width
+              width: kaomojiList.cellWidth
               height: root.listRowHeight
               color: hasCursor ? root.selectedBackground : "transparent"
 
