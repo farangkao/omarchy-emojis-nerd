@@ -94,6 +94,7 @@ Removal re-enables the built-in emoji picker.
 | Type text | Search the active dataset (kaomoji search matches tags) |
 | `!` + text | Switch to Nerd Fonts and search (`!house`) |
 | Tab | Cycle Recents → emojis → Nerd Fonts → kaomoji (the filter is kept) |
+| Shift+Tab | Cycle the modes backwards |
 | Header tabs | Switch modes with the mouse |
 | Arrow keys / PageUp / PageDown | Move the cursor |
 | Enter | Type the selected glyph into the focused app |

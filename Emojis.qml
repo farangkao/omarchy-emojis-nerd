@@ -436,9 +436,12 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.dismiss()
             event.accepted = true
-          } else if (event.key === Qt.Key_Tab) {
-            var next = root.modeOrder[(root.modeOrder.indexOf(root.mode) + 1) % root.modeOrder.length]
-            root.setMode(next)
+          } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            // Shift+Tab cycles backwards. It usually arrives as Backtab,
+            // but some input paths send Tab with the Shift modifier.
+            var step = event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1
+            var count = root.modeOrder.length
+            root.setMode(root.modeOrder[(root.modeOrder.indexOf(root.mode) + step + count) % count])
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
