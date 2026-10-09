@@ -49,7 +49,10 @@ Item {
   // Rows that fit in the list view. Recents spill into a second column
   // (filled top to bottom) once they no longer fit in one.
   readonly property int listRows: Math.max(1, Math.floor(kaomojiList.height / root.listRowHeight))
-  readonly property bool recentSplit: root.mode === "recent" && displayModel.count > root.listRows
+  readonly property bool recentSplit: root.mode === "recent" && !root.filterText
+                                      && displayModel.count > root.listRows
+  // The two-column cap follows the live row count, so refill on resize.
+  onListRowsChanged: if (root.opened && root.mode === "recent") root.rebuildDisplay()
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -75,7 +78,9 @@ Item {
 
   property int listRowHeight: Math.max(Style.space(32), Style.font.title + Style.spacing.md)
 
-  property int footerHeight: root.mode === "nerd" ? Style.space(26) : 0
+  property int footerHeight: root.mode === "nerd" ? Style.space(26)
+                            : root.mode === "recent" ? Style.space(26) * 2
+                            : 0
 
   function open(payloadJson) {
     root.opened = true
@@ -133,7 +138,11 @@ Item {
     }
     if (root.mode === "recent") {
       root.selectedIndex = 0
-      fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText, root.recentLimit))
+      // Unfiltered, show exactly what fits in two full columns; a search
+      // lists every match in one scrolling column. Older entries stay in
+      // the history file either way.
+      fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText,
+                                           root.filterText ? root.recentLimit : root.listRows * 2))
       return
     }
     fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
@@ -707,18 +716,26 @@ Item {
                 elide: Text.ElideRight
               }
 
-              Text {
-                // Alt+digit hotkey for the first ten Recents rows.
+              Rectangle {
+                // Alt+digit hotkey for the first ten Recents rows, as a
+                // badge in the active tab's colors.
                 id: hotkeyText
                 anchors.right: parent.right
                 anchors.rightMargin: Style.spacing.sm
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.mode === "recent" ? EmojiSearch.hotkeyLabel(kaomojiRow.index) : ""
-                width: text ? implicitWidth : 0
-                color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
-                opacity: kaomojiRow.hasCursor ? 0.75 : 0.45
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                radius: root.cornerRadius
+                color: hotkeyLabel.text ? root.selectedBackground : "transparent"
+                width: hotkeyLabel.text ? hotkeyLabel.implicitWidth + Style.spacing.sm : 0
+                height: hotkeyLabel.text ? hotkeyLabel.implicitHeight + Style.spacing.sm / 2 : 0
+
+                Text {
+                  id: hotkeyLabel
+                  anchors.centerIn: parent
+                  text: root.mode === "recent" ? EmojiSearch.hotkeyLabel(kaomojiRow.index) : ""
+                  color: root.selectedText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
               }
 
               Text {
@@ -813,6 +830,31 @@ Item {
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             elide: Text.ElideRight
+          }
+
+          Column {
+            // Recents: how the hotkeys work, in the space below the list.
+            visible: root.mode === "recent"
+            anchors.centerIn: parent
+            spacing: Style.space(2)
+
+            Text {
+              text: "Alt + number  →  type"
+              color: root.foreground
+              opacity: 0.45
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            Text {
+              text: "Alt + Shift + number  →  copy"
+              color: root.foreground
+              opacity: 0.45
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
           }
         }
       }
