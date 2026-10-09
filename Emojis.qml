@@ -19,6 +19,8 @@ Item {
   property bool cursorActive: false
   property var emojis: []
   property string mode: "recent"
+  // Alt+digit row waiting for Alt to be released before it is typed.
+  property int pendingHotkey: -1
 
   // Nerd Font search streams from nerdfonts.tsv via grep instead of
   // holding the whole dataset in memory: only matched rows are resident.
@@ -77,6 +79,7 @@ Item {
 
   function open(payloadJson) {
     root.opened = true
+    root.pendingHotkey = -1
     // Land on Recents once there is something in it; a fresh install
     // still opens on the full emoji grid.
     root.mode = root.recentRows.length > 0 ? "recent" : "emoji"
@@ -89,10 +92,12 @@ Item {
 
   function close() {
     root.opened = false
+    root.pendingHotkey = -1
   }
 
   function dismiss() {
     root.opened = false
+    root.pendingHotkey = -1
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "farangkao.emojis-nerd")
   }
@@ -432,6 +437,14 @@ Item {
         focus: true
 
         Keys.priority: Keys.BeforeItem
+        Keys.onReleased: function(event) {
+          if (event.key === Qt.Key_Alt && root.pendingHotkey >= 0) {
+            var hotkey = root.pendingHotkey
+            root.pendingHotkey = -1
+            root.activateIndex(hotkey)
+            event.accepted = true
+          }
+        }
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
@@ -447,10 +460,12 @@ Item {
           } else if (root.mode === "recent" && (event.modifiers & Qt.AltModifier)
                      && EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode) >= 0) {
             // Alt+1…9/0 types one of the first ten Recents shown (search
-            // or not); with Shift it copies instead.
+            // or not); with Shift it copies instead. Typing waits for the
+            // Alt release: the insert helper pastes with Shift+Insert, and
+            // a still-held Alt would turn that into Alt+Shift+Insert.
             var hotkey = EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode)
             if (event.modifiers & Qt.ShiftModifier) root.copyIndex(hotkey)
-            else root.activateIndex(hotkey)
+            else root.pendingHotkey = hotkey
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
