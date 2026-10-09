@@ -41,6 +41,9 @@ Item {
   readonly property int recentLimit: 48
   readonly property string recentPath: Quickshell.env("HOME") + "/.local/state/omarchy/emojis-nerd-recents.json"
   readonly property var modeOrder: ["recent", "emoji", "nerd", "kaomoji"]
+  // Recents can include long kaomoji, so they share the full-width list
+  // layout with the Kaomoji tab instead of the tight emoji grid.
+  readonly property bool listMode: root.mode === "kaomoji" || root.mode === "recent"
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -70,7 +73,9 @@ Item {
 
   function open(payloadJson) {
     root.opened = true
-    root.mode = "recent"
+    // Land on Recents once there is something in it; a fresh install
+    // still opens on the full emoji grid.
+    root.mode = root.recentRows.length > 0 ? "recent" : "emoji"
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
@@ -149,7 +154,7 @@ Item {
   }
 
   function positionSelected() {
-    if (root.mode === "kaomoji") kaomojiList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    if (root.listMode) kaomojiList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
     else resultGrid.positionViewAtIndex(root.selectedIndex, GridView.Contain)
   }
 
@@ -194,10 +199,10 @@ Item {
     positionSelected()
   }
 
-  // Up/Down step one entry per line in the kaomoji list, one grid row
-  // (columns entries) in the pickers.
+  // Up/Down step one entry per line in list modes (kaomoji, recents),
+  // one grid row (columns entries) in the emoji and Nerd Font pickers.
   function rowStep() {
-    return root.mode === "kaomoji" ? 1 : columns
+    return root.listMode ? 1 : columns
   }
 
   function selectRow(delta) {
@@ -223,8 +228,8 @@ Item {
       positionSelected()
       return
     }
-    var viewHeight = root.mode === "kaomoji" ? kaomojiList.height : resultGrid.height
-    var rowHeight = root.mode === "kaomoji" ? listRowHeight : cellHeight
+    var viewHeight = root.listMode ? kaomojiList.height : resultGrid.height
+    var rowHeight = root.listMode ? listRowHeight : cellHeight
     var visibleRows = Math.max(1, Math.floor(viewHeight / rowHeight))
     var newIndex = selectedIndex + delta * rowStep() * visibleRows
     if (newIndex < 0) newIndex = 0
@@ -543,7 +548,7 @@ Item {
           GridView {
             id: resultGrid
             anchors.fill: parent
-            visible: root.mode !== "kaomoji"
+            visible: !root.listMode
             model: displayModel
             clip: true
             cellWidth: root.cellWidth
@@ -599,7 +604,7 @@ Item {
           ListView {
             id: kaomojiList
             anchors.fill: parent
-            visible: root.mode === "kaomoji"
+            visible: root.listMode
             model: displayModel
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -618,11 +623,14 @@ Item {
               color: hasCursor ? root.selectedBackground : "transparent"
 
               Text {
-                // The kaomoji itself, left-aligned; capped so long ones
-                // never reach the centered tag column.
+                // The glyph, left-aligned. On the kaomoji tab it is capped
+                // so long ones never reach the centered tag column; Recents
+                // has no tag column, so the glyph gets the whole row.
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(parent.width * 0.42, implicitWidth)
+                width: root.mode === "recent"
+                       ? parent.width
+                       : Math.min(parent.width * 0.42, implicitWidth)
                 text: kaomojiRow.emoji
                 color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
                 font.family: root.fontFamily
@@ -633,6 +641,7 @@ Item {
               Text {
                 // Tag column pinned to the panel's horizontal center so
                 // it lines up across rows; kept visually secondary.
+                visible: root.mode !== "recent"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(parent.width * 0.5, implicitWidth)

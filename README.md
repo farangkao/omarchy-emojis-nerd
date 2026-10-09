@@ -11,8 +11,9 @@ emoji picker. SUPER+CTRL+E keeps working; it just opens this picker instead.
 
 ## Features
 
-- **Recents first** — the picker opens on a Recents tab of glyphs you
-  recently typed or copied (persisted under
+- **Recents first** — once you have picked something, the picker opens on a
+  Recents list of what you recently typed or copied, one full-width row each
+  so long kaomoji fit (persisted under
   `~/.local/state/omarchy/emojis-nerd-recents.json`)
 - **Three datasets, one popup** — 1,800+ emojis, 10,600+ Nerd Font glyphs,
   and 1,500+ kaomoji (Japanese emoticons)
