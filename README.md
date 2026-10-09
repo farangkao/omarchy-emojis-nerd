@@ -113,6 +113,7 @@ mise run validate           # omarchy plugin validate
 mise run install-local      # sync into ~/.config/omarchy/plugins + restart shell
 mise run check-dataset      # check for a new Nerd Fonts release, preview glyph changes
 mise run regenerate-dataset # rebuild nerdfonts.tsv from the pinned Nerd Fonts release
+mise run security-baseline  # run the marketplace's automated security scan against HEAD
 mise run submission-body    # preview the marketplace submission issue
 mise run publish            # submit to the Omarchy plugin marketplace
 ```

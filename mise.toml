@@ -1,6 +1,6 @@
 # Development and publishing tasks for the Emojis & Nerd Fonts plugin.
-# Requires: jq, node, python3, git; plus `gh` for publish and `omarchy`
-# for validate/install-local.
+# Requires: jq, node, python3, git; plus `gh` for publish and
+# security-baseline, and `omarchy` for validate/install-local.
 
 [tasks.test]
 description = "Run search-logic and dataset tests"
@@ -29,6 +29,37 @@ run = "python3 tools/convert_nerd.py"
 [tasks.check-dataset]
 description = "Check for a new Nerd Fonts release and preview glyph changes"
 run = "python3 tools/check_nerdfonts.py"
+
+[tasks.security-baseline]
+description = "Run the marketplace's automated security baseline against HEAD (node >= 24)"
+run = """
+marketplace=.tmp/marketplace
+if [ -d "$marketplace/.git" ]; then
+  git -C "$marketplace" fetch --depth 1 --quiet origin main
+  git -C "$marketplace" reset --hard --quiet origin/main
+else
+  rm -rf "$marketplace"
+  git clone --depth 1 --quiet https://github.com/HANCORE-linux/omarchy-plugin-marketplace "$marketplace"
+fi
+
+printf '{"schemaVersion":1,"repoUrl":"https://github.com/farangkao/omarchy-emojis-nerd","commitSha":"%s"}\\n' "$(git rev-parse HEAD)" > .tmp/baseline-metadata.json
+
+# gh's mise shim prints a banner to stdout, so keep only the last line and
+# only use it when it looks like a token; otherwise fall back to anonymous
+# access, which works for public repos.
+token="$(gh auth token 2>/dev/null | tail -n 1)"
+case "$token" in
+  ghp_*|gho_*|ghu_*|ghs_*|ghr_*|github_pat_*) export GITHUB_TOKEN="$token" ;;
+esac
+
+rm -f .tmp/baseline-result.json
+node "$marketplace/scripts/security-baseline.mjs" --metadata=.tmp/baseline-metadata.json --json=.tmp/baseline-result.json || exit 1
+
+[ "$(jq -r '.outcome // empty' .tmp/baseline-result.json)" = passed ] || {
+  echo "security baseline: findings require attention — see the report above" >&2
+  exit 1
+}
+"""
 
 [tasks.submission-body]
 description = "Write and preview the marketplace submission issue body"
