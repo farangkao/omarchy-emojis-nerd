@@ -46,13 +46,12 @@ Item {
   // Recents can include long kaomoji, so they share the full-width list
   // layout with the Kaomoji tab instead of the tight emoji grid.
   readonly property bool listMode: root.mode === "kaomoji" || root.mode === "recent"
-  // Rows that fit in the list view. Recents spill into a second column
-  // (filled top to bottom) once they no longer fit in one.
+  // Rows that fit in the list view. Recents switch to two columns, filled
+  // row by row and scrolling vertically like the other tabs, once they no
+  // longer fit in one.
   readonly property int listRows: Math.max(1, Math.floor(kaomojiList.height / root.listRowHeight))
   readonly property bool recentSplit: root.mode === "recent" && !root.filterText
                                       && displayModel.count > root.listRows
-  // The two-column cap follows the live row count, so refill on resize.
-  onListRowsChanged: if (root.opened && root.mode === "recent") root.rebuildDisplay()
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -138,11 +137,7 @@ Item {
     }
     if (root.mode === "recent") {
       root.selectedIndex = 0
-      // Unfiltered, show exactly what fits in two full columns; a search
-      // lists every match in one scrolling column. Older entries stay in
-      // the history file either way.
-      fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText,
-                                           root.filterText ? root.recentLimit : root.listRows * 2))
+      fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText, root.recentLimit))
       return
     }
     fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
@@ -218,9 +213,10 @@ Item {
     positionSelected()
   }
 
-  // Up/Down step one entry per line in list modes (kaomoji, recents),
-  // one grid row (columns entries) in the emoji and Nerd Font pickers.
+  // Up/Down step one grid row: one entry in the kaomoji list, two in the
+  // split Recents, columns entries in the emoji and Nerd Font pickers.
   function rowStep() {
+    if (root.recentSplit) return 2
     return root.listMode ? 1 : columns
   }
 
@@ -236,20 +232,6 @@ Item {
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
-    positionSelected()
-  }
-
-  // Left/Right jump a whole column in the split Recents view.
-  function selectColumn(delta) {
-    if (!root.recentSplit) {
-      root.select(delta)
-      return
-    }
-    if (displayModel.count === 0) return
-    var newIndex = selectedIndex + delta * root.listRows
-    if (newIndex < 0 || newIndex >= displayModel.count) return
-    selectedIndex = newIndex
-    cursorActive = true
     positionSelected()
   }
 
@@ -480,10 +462,10 @@ Item {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Left) {
-            root.selectColumn(-1)
+            root.select(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Right) {
-            root.selectColumn(1)
+            root.select(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.selectRow(-1)
@@ -664,8 +646,9 @@ Item {
             model: displayModel
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            flow: root.recentSplit ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
-            cellWidth: root.recentSplit ? Math.floor(width / 2) : width
+            // Exactly half the width, so two columns fill the row with no
+            // sliver of a third.
+            cellWidth: root.recentSplit ? width / 2 : width
             cellHeight: root.listRowHeight
 
             delegate: Rectangle {
