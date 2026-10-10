@@ -46,8 +46,9 @@ Item {
   // Recents can include long kaomoji, so they share the full-width list
   // layout with the Kaomoji tab instead of the tight emoji grid.
   readonly property bool listMode: root.mode === "kaomoji" || root.mode === "recent"
-  // Rows that fit in the list view. Recents spill into a second column
-  // (filled top to bottom) once they no longer fit in one.
+  // Rows that fit in the list view. Recents switch to two columns, filled
+  // row by row and scrolling vertically like the other tabs, once they no
+  // longer fit in one.
   readonly property int listRows: Math.max(1, Math.floor(kaomojiList.height / root.listRowHeight))
   readonly property bool recentSplit: root.mode === "recent" && !root.filterText
                                       && displayModel.count > root.listRows
@@ -136,10 +137,7 @@ Item {
     }
     if (root.mode === "recent") {
       root.selectedIndex = 0
-      // Unfiltered, older entries continue in further columns that scroll
-      // sideways two at a time; a search lists every match in one column.
       fillDisplay(EmojiSearch.filterEmojis(root.recentRows, root.filterText, root.recentLimit))
-      Qt.callLater(function() { kaomojiList.positionViewAtBeginning() })
       return
     }
     fillDisplay(EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000))
@@ -215,9 +213,10 @@ Item {
     positionSelected()
   }
 
-  // Up/Down step one entry per line in list modes (kaomoji, recents),
-  // one grid row (columns entries) in the emoji and Nerd Font pickers.
+  // Up/Down step one grid row: one entry in the kaomoji list, two in the
+  // split Recents, columns entries in the emoji and Nerd Font pickers.
   function rowStep() {
+    if (root.recentSplit) return 2
     return root.listMode ? 1 : columns
   }
 
@@ -233,20 +232,6 @@ Item {
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
-    positionSelected()
-  }
-
-  // Left/Right jump a whole column in the split Recents view.
-  function selectColumn(delta) {
-    if (!root.recentSplit) {
-      root.select(delta)
-      return
-    }
-    if (displayModel.count === 0) return
-    var newIndex = selectedIndex + delta * root.listRows
-    if (newIndex < 0 || newIndex >= displayModel.count) return
-    selectedIndex = newIndex
-    cursorActive = true
     positionSelected()
   }
 
@@ -477,10 +462,10 @@ Item {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Left) {
-            root.selectColumn(-1)
+            root.select(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Right) {
-            root.selectColumn(1)
+            root.select(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.selectRow(-1)
@@ -661,12 +646,10 @@ Item {
             model: displayModel
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            flow: root.recentSplit ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
-            // Exactly half the width, so two columns fill the view with no
-            // sliver of a third; drags settle on whole columns.
+            // Exactly half the width, so two columns fill the row with no
+            // sliver of a third.
             cellWidth: root.recentSplit ? width / 2 : width
             cellHeight: root.listRowHeight
-            snapMode: root.recentSplit ? GridView.SnapToRow : GridView.NoSnap
 
             delegate: Rectangle {
               id: kaomojiRow
@@ -771,28 +754,6 @@ Item {
                     root.activateIndex(kaomojiRow.index)
                 }
               }
-            }
-          }
-
-          MouseArea {
-            // Split Recents: the mouse wheel (or a sideways touchpad swipe)
-            // steps one column per notch. Clicks and hover go through to
-            // the rows underneath.
-            anchors.fill: kaomojiList
-            enabled: root.recentSplit
-            acceptedButtons: Qt.NoButton
-            property real wheelDelta: 0
-            onWheel: function(wheel) {
-              wheelDelta += wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x
-              var steps = wheelDelta > 0 ? Math.floor(wheelDelta / 120) : Math.ceil(wheelDelta / 120)
-              if (steps === 0) return
-              wheelDelta -= steps * 120
-              var list = kaomojiList
-              var rows = root.listRows
-              var columns = Math.ceil(displayModel.count / rows)
-              var first = Math.floor(Math.max(0, list.indexAt(list.contentX + 1, list.contentY + 1)) / rows)
-              var target = Math.max(0, Math.min(columns - 2, first - steps))
-              list.positionViewAtIndex(target * rows, GridView.Beginning)
             }
           }
 
