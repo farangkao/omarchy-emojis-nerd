@@ -140,6 +140,33 @@ function normalizeRecent(item) {
   return entry
 }
 
+// Dimmed hint shown beside a Recents glyph: the Nerd Font name, the
+// kaomoji tags, or the emoji's own keywords, in that order.
+function recentHint(item) {
+  if (!item) return ""
+  if (item.n) return String(item.n)
+  if (item.tags) return formatKaomojiTags(item.tags)
+  return String(item.k || "")
+}
+
+// Alt+digit hotkeys address the first ten Recents rows: 1–9 then 0.
+// Returns the row index, or -1 for anything else. The scan code keeps
+// it layout-independent (Shift or a Greek layout change event.key);
+// X11/evdev scan codes 10–19 are the digit row 1…0.
+function hotkeyIndex(key, scanCode) {
+  var digit = -1
+  if (scanCode >= 10 && scanCode <= 19) digit = scanCode === 19 ? 0 : scanCode - 9
+  else if (key >= 0x30 && key <= 0x39) digit = key - 0x30
+  if (digit < 0) return -1
+  return digit === 0 ? 9 : digit - 1
+}
+
+// Label for row index 0–9 ("1"…"9", "0"); empty past the tenth row.
+function hotkeyLabel(index) {
+  if (index < 0 || index > 9) return ""
+  return index === 9 ? "0" : String(index + 1)
+}
+
 function parseRecents(raw) {
   try {
     var data = JSON.parse(String(raw || ""))
@@ -186,6 +213,9 @@ if (typeof module !== "undefined") {
     filterTsvRows: filterTsvRows,
     normalizeRecent: normalizeRecent,
     parseRecents: parseRecents,
-    rememberRecent: rememberRecent
+    rememberRecent: rememberRecent,
+    recentHint: recentHint,
+    hotkeyIndex: hotkeyIndex,
+    hotkeyLabel: hotkeyLabel
   }
 }

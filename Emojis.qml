@@ -17,8 +17,18 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
+  // Hover steers the selection only after the pointer really moves over
+  // the popup: mapping the window under a stationary cursor makes Qt
+  // deliver a synthesized hover event to the row beneath it, which would
+  // otherwise steal the initial first-row selection on every open.
+  property bool hoverArmed: false
+  property bool hoverTracked: false
+  property real lastHoverX: 0
+  property real lastHoverY: 0
   property var emojis: []
   property string mode: "recent"
+  // Alt+digit row waiting for Alt to be released before it is typed.
+  property int pendingHotkey: -1
 
   // Nerd Font search streams from nerdfonts.tsv via grep instead of
   // holding the whole dataset in memory: only matched rows are resident.
@@ -44,10 +54,12 @@ Item {
   // Recents can include long kaomoji, so they share the full-width list
   // layout with the Kaomoji tab instead of the tight emoji grid.
   readonly property bool listMode: root.mode === "kaomoji" || root.mode === "recent"
-  // Rows that fit in the list view. Recents spill into a second column
-  // (filled top to bottom) once they no longer fit in one.
+  // Rows that fit in the list view. Recents switch to two columns, filled
+  // row by row and scrolling vertically like the other tabs, once they no
+  // longer fit in one.
   readonly property int listRows: Math.max(1, Math.floor(kaomojiList.height / root.listRowHeight))
-  readonly property bool recentSplit: root.mode === "recent" && displayModel.count > root.listRows
+  readonly property bool recentSplit: root.mode === "recent" && !root.filterText
+                                      && displayModel.count > root.listRows
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -73,26 +85,33 @@ Item {
 
   property int listRowHeight: Math.max(Style.space(32), Style.font.title + Style.spacing.md)
 
-  property int footerHeight: root.mode === "nerd" ? Style.space(26) : 0
+  property int footerHeight: root.mode === "nerd" ? Style.space(26)
+                            : root.mode === "recent" ? Style.space(26) * 2
+                            : 0
 
   function open(payloadJson) {
     root.opened = true
+    root.pendingHotkey = -1
     // Land on Recents once there is something in it; a fresh install
     // still opens on the full emoji grid.
     root.mode = root.recentRows.length > 0 ? "recent" : "emoji"
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
+    root.hoverArmed = false
+    root.hoverTracked = false
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
     root.opened = false
+    root.pendingHotkey = -1
   }
 
   function dismiss() {
     root.opened = false
+    root.pendingHotkey = -1
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "farangkao.emojis-nerd")
   }
@@ -143,7 +162,8 @@ Item {
         name: (out[j].n || ""),
         tags: EmojiSearch.formatKaomojiTags(out[j].tags),
         rawTags: (out[j].tags || ""),
-        keywords: (out[j].k || "")
+        keywords: (out[j].k || ""),
+        hint: root.mode === "recent" ? EmojiSearch.recentHint(out[j]) : ""
       })
     }
 
@@ -203,9 +223,24 @@ Item {
     positionSelected()
   }
 
-  // Up/Down step one entry per line in list modes (kaomoji, recents),
-  // one grid row (columns entries) in the emoji and Nerd Font pickers.
+  // Arms hover-steering from real pointer movement. The delegates feed
+  // their own hover-move positions in — hover delivery reaches the rows
+  // (the topmost accepting items), never a popup-level area — and the
+  // map-time synthesized hover under a stationary cursor only records
+  // its position without arming. Delegate-local coordinates differ as
+  // soon as the pointer truly moves, which is all the check needs.
+  function trackHover(x, y) {
+    if (root.hoverTracked && (x !== root.lastHoverX || y !== root.lastHoverY))
+      root.hoverArmed = true
+    root.hoverTracked = true
+    root.lastHoverX = x
+    root.lastHoverY = y
+  }
+
+  // Up/Down step one grid row: one entry in the kaomoji list, two in the
+  // split Recents, columns entries in the emoji and Nerd Font pickers.
   function rowStep() {
+    if (root.recentSplit) return 2
     return root.listMode ? 1 : columns
   }
 
@@ -221,20 +256,6 @@ Item {
     if (newIndex < 0) newIndex = 0
     if (newIndex >= displayModel.count) newIndex = displayModel.count - 1
     selectedIndex = newIndex
-    positionSelected()
-  }
-
-  // Left/Right jump a whole column in the split Recents view.
-  function selectColumn(delta) {
-    if (!root.recentSplit) {
-      root.select(delta)
-      return
-    }
-    if (displayModel.count === 0) return
-    var newIndex = selectedIndex + delta * root.listRows
-    if (newIndex < 0 || newIndex >= displayModel.count) return
-    selectedIndex = newIndex
-    cursorActive = true
     positionSelected()
   }
 
@@ -431,6 +452,14 @@ Item {
         focus: true
 
         Keys.priority: Keys.BeforeItem
+        Keys.onReleased: function(event) {
+          if (event.key === Qt.Key_Alt && root.pendingHotkey >= 0) {
+            var hotkey = root.pendingHotkey
+            root.pendingHotkey = -1
+            root.activateIndex(hotkey)
+            event.accepted = true
+          }
+        }
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
@@ -443,14 +472,24 @@ Item {
             var count = root.modeOrder.length
             root.setMode(root.modeOrder[(root.modeOrder.indexOf(root.mode) + step + count) % count])
             event.accepted = true
+          } else if (root.mode === "recent" && (event.modifiers & Qt.AltModifier)
+                     && EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode) >= 0) {
+            // Alt+1…9/0 types one of the first ten Recents shown (search
+            // or not); with Shift it copies instead. Typing waits for the
+            // Alt release: the insert helper pastes with Shift+Insert, and
+            // a still-held Alt would turn that into Alt+Shift+Insert.
+            var hotkey = EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode)
+            if (event.modifiers & Qt.ShiftModifier) root.copyIndex(hotkey)
+            else root.pendingHotkey = hotkey
+            event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
           } else if (event.key === Qt.Key_Left) {
-            root.selectColumn(-1)
+            root.select(-1)
             event.accepted = true
           } else if (event.key === Qt.Key_Right) {
-            root.selectColumn(1)
+            root.select(1)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
             root.selectRow(-1)
@@ -605,7 +644,8 @@ Item {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) {
+                onPositionChanged: function(mouse) { root.trackHover(mouse.x, mouse.y) }
+                onContainsMouseChanged: if (containsMouse && root.hoverArmed) {
                   root.cursorActive = true
                   root.selectedIndex = index
                 }
@@ -631,8 +671,9 @@ Item {
             model: displayModel
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            flow: root.recentSplit ? GridView.FlowTopToBottom : GridView.FlowLeftToRight
-            cellWidth: root.recentSplit ? Math.floor(width / 2) : width
+            // Exactly half the width, so two columns fill the row with no
+            // sliver of a third.
+            cellWidth: root.recentSplit ? width / 2 : width
             cellHeight: root.listRowHeight
 
             delegate: Rectangle {
@@ -641,6 +682,7 @@ Item {
               required property int index
               required property string emoji
               required property string tags
+              required property string hint
 
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
 
@@ -649,19 +691,59 @@ Item {
               color: hasCursor ? root.selectedBackground : "transparent"
 
               Text {
+                id: rowGlyph
                 // The glyph, left-aligned. On the kaomoji tab it is capped
-                // so long ones never reach the centered tag column; Recents
-                // has no tag column, so the glyph gets the whole row.
+                // so long ones never reach the centered tag column; on
+                // Recents it leaves room for the hint and hotkey.
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.mode === "recent"
-                       ? parent.width
+                       ? Math.min(parent.width - hotkeyText.width - Style.spacing.md, implicitWidth)
                        : Math.min(parent.width * 0.42, implicitWidth)
                 text: kaomojiRow.emoji
                 color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
                 elide: Text.ElideRight
+              }
+
+              Text {
+                // Recents: what the glyph is (Nerd Font name, kaomoji
+                // tags, emoji keywords), dimmed between glyph and hotkey.
+                visible: root.mode === "recent" && text !== ""
+                anchors.left: rowGlyph.right
+                anchors.leftMargin: Style.spacing.md
+                anchors.right: hotkeyText.left
+                anchors.rightMargin: Style.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+                text: kaomojiRow.hint
+                color: kaomojiRow.hasCursor ? root.selectedText : root.foreground
+                opacity: kaomojiRow.hasCursor ? 0.75 : 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+              }
+
+              Rectangle {
+                // Alt+digit hotkey for the first ten Recents rows, as a
+                // badge in the active tab's colors.
+                id: hotkeyText
+                anchors.right: parent.right
+                anchors.rightMargin: Style.spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+                radius: root.cornerRadius
+                color: hotkeyLabel.text ? root.selectedBackground : "transparent"
+                width: hotkeyLabel.text ? hotkeyLabel.implicitWidth + Style.spacing.sm : 0
+                height: hotkeyLabel.text ? hotkeyLabel.implicitHeight + Style.spacing.sm / 2 : 0
+
+                Text {
+                  id: hotkeyLabel
+                  anchors.centerIn: parent
+                  text: root.mode === "recent" ? EmojiSearch.hotkeyLabel(kaomojiRow.index) : ""
+                  color: root.selectedText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
               }
 
               Text {
@@ -684,7 +766,8 @@ Item {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) {
+                onPositionChanged: function(mouse) { root.trackHover(mouse.x, mouse.y) }
+                onContainsMouseChanged: if (containsMouse && root.hoverArmed) {
                   root.cursorActive = true
                   root.selectedIndex = kaomojiRow.index
                 }
@@ -756,6 +839,89 @@ Item {
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             elide: Text.ElideRight
+          }
+
+          Column {
+            // Recents: how the hotkeys work, in the space below the list.
+            // The 0-9 chips reuse the row badges' look (active tab
+            // colors), so the footer example matches the list.
+            visible: root.mode === "recent"
+            anchors.centerIn: parent
+            spacing: Style.space(2)
+
+            Row {
+              anchors.horizontalCenter: parent.horizontalCenter
+
+              Text {
+                text: "ALT+ "
+                color: root.foreground
+                opacity: 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                radius: Style.cornerRadius
+                color: root.selectedBackground
+                width: footerDigits1.implicitWidth + Style.spacing.sm
+                height: footerDigits1.implicitHeight + Style.spacing.sm / 2
+
+                Text {
+                  id: footerDigits1
+                  anchors.centerIn: parent
+                  text: "0-9"
+                  color: root.selectedText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+              }
+
+              Text {
+                text: "  → type,    ALT+SHIFT+ "
+                color: root.foreground
+                opacity: 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                radius: Style.cornerRadius
+                color: root.selectedBackground
+                width: footerDigits2.implicitWidth + Style.spacing.sm
+                height: footerDigits2.implicitHeight + Style.spacing.sm / 2
+
+                Text {
+                  id: footerDigits2
+                  anchors.centerIn: parent
+                  text: "0-9"
+                  color: root.selectedText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+              }
+
+              Text {
+                text: "  → copy"
+                color: root.foreground
+                opacity: 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Text {
+              text: "TAB → switch,    ENTER → type,    CTRL+ENTER → copy"
+              color: root.foreground
+              opacity: 0.45
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
           }
         }
       }
