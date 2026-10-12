@@ -6,6 +6,9 @@ emoji picker. SUPER+CTRL+E keeps working; it just opens this picker instead.
 
 > **Acknowledgment:** this plugin was heavily developed with AI assistance
 > (GLM-5.3). All code has been reviewed and tested by the repository owner.
+> The Recents tab and backwards mode cycling (Shift+Tab) were contributed
+> by [Somnius](https://github.com/Somnius) in
+> [PR #3](https://github.com/farangkao/omarchy-emojis-nerd/pull/3).
 
 ![Emojis, Kaomoji & Nerd Fonts picker](preview.png)
 
@@ -15,6 +18,13 @@ emoji picker. SUPER+CTRL+E keeps working; it just opens this picker instead.
   Recents list of what you recently typed or copied, one full-width row each
   so long kaomoji fit (persisted under
   `~/.local/state/omarchy/emojis-nerd-recents.json`)
+
+  ![Recents tab](preview-recents.png)
+
+  *Recents, Alt+number hotkeys, and the hint footer by
+  [Somnius](https://github.com/Somnius)
+  ([PR #3](https://github.com/farangkao/omarchy-emojis-nerd/pull/3),
+  [PR #5](https://github.com/farangkao/omarchy-emojis-nerd/pull/5)).*
 - **Three datasets, one popup** — 1,800+ emojis, 10,600+ Nerd Font glyphs,
   and 1,500+ kaomoji (Japanese emoticons)
 - **`!house` flips to Nerd Fonts instantly** — the leading `!` is a sticky
@@ -85,7 +95,14 @@ omarchy plugin update farangkao.emojis-nerd
 omarchy plugin remove farangkao.emojis-nerd
 ```
 
-Removal re-enables the built-in emoji picker.
+Removal re-enables the built-in emoji picker. Your Recents history
+(`~/.local/state/omarchy/emojis-nerd-recents.json`) survives removal —
+leaving it is harmless and keeps your history if you reinstall; delete it
+for a fully clean slate:
+
+```bash
+rm -f ~/.local/state/omarchy/emojis-nerd-recents.json
+```
 
 ## Controls
 
@@ -128,7 +145,7 @@ Local dev loop: edit → `mise run install-local` → SUPER+CTRL+E.
 ### Dataset
 
 `nerdfonts.tsv` is generated from Nerd Fonts `glyphnames.json` (name →
-codepoint mapping only; no font data), pinned to v3.5.0. One line per
+codepoint mapping only; no font data), pinned to v3.5.1. One line per
 glyph: keywords, name, hex codepoint. Alias names sharing a codepoint are
 merged, and keywords are source-derived only — the name in its `nf-`, raw,
 and dashed forms plus its words. Set labels ("material", "fontawesome",

@@ -15,7 +15,7 @@ Copyright (c) David Heinemeier Hansson
 
 Copyright (c) 2014 Ryan L McIntyre
 
-- `nerdfonts.json` is generated from Nerd Fonts v3.5.0 `glyphnames.json`
+- `nerdfonts.tsv` is generated from Nerd Fonts v3.5.1 `glyphnames.json`
   (the glyph name → codepoint mapping) by `tools/convert_nerd.py`.
   It contains no font data or font files.
 

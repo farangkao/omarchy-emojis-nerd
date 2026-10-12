@@ -23,7 +23,7 @@ omarchy restart shell
 
 [tasks.regenerate-dataset]
 description = "Rebuild nerdfonts.tsv from the pinned Nerd Fonts release (bump NF_VERSION to upgrade)"
-env = { NF_VERSION = "3.5.0" }
+env = { NF_VERSION = "3.5.1" }
 run = "python3 tools/convert_nerd.py"
 
 [tasks.check-dataset]
