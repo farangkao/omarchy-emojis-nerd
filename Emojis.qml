@@ -17,6 +17,14 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property bool cursorActive: false
+  // Hover steers the selection only after the pointer really moves over
+  // the popup: mapping the window under a stationary cursor makes Qt
+  // deliver a synthesized hover event to the row beneath it, which would
+  // otherwise steal the initial first-row selection on every open.
+  property bool hoverArmed: false
+  property bool hoverTracked: false
+  property real lastHoverX: 0
+  property real lastHoverY: 0
   property var emojis: []
   property string mode: "recent"
   // Alt+digit row waiting for Alt to be released before it is typed.
@@ -90,6 +98,8 @@ Item {
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
+    root.hoverArmed = false
+    root.hoverTracked = false
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -211,6 +221,20 @@ Item {
       selectedIndex = (selectedIndex + delta + displayModel.count) % displayModel.count
     }
     positionSelected()
+  }
+
+  // Arms hover-steering from real pointer movement. The delegates feed
+  // their own hover-move positions in — hover delivery reaches the rows
+  // (the topmost accepting items), never a popup-level area — and the
+  // map-time synthesized hover under a stationary cursor only records
+  // its position without arming. Delegate-local coordinates differ as
+  // soon as the pointer truly moves, which is all the check needs.
+  function trackHover(x, y) {
+    if (root.hoverTracked && (x !== root.lastHoverX || y !== root.lastHoverY))
+      root.hoverArmed = true
+    root.hoverTracked = true
+    root.lastHoverX = x
+    root.lastHoverY = y
   }
 
   // Up/Down step one grid row: one entry in the kaomoji list, two in the
@@ -620,7 +644,8 @@ Item {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) {
+                onPositionChanged: function(mouse) { root.trackHover(mouse.x, mouse.y) }
+                onContainsMouseChanged: if (containsMouse && root.hoverArmed) {
                   root.cursorActive = true
                   root.selectedIndex = index
                 }
@@ -741,7 +766,8 @@ Item {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: if (containsMouse) {
+                onPositionChanged: function(mouse) { root.trackHover(mouse.x, mouse.y) }
+                onContainsMouseChanged: if (containsMouse && root.hoverArmed) {
                   root.cursorActive = true
                   root.selectedIndex = kaomojiRow.index
                 }
@@ -817,21 +843,79 @@ Item {
 
           Column {
             // Recents: how the hotkeys work, in the space below the list.
+            // The 0-9 chips reuse the row badges' look (active tab
+            // colors), so the footer example matches the list.
             visible: root.mode === "recent"
             anchors.centerIn: parent
             spacing: Style.space(2)
 
-            Text {
-              text: "Alt + number  →  type"
-              color: root.foreground
-              opacity: 0.45
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+            Row {
               anchors.horizontalCenter: parent.horizontalCenter
+
+              Text {
+                text: "ALT+ "
+                color: root.foreground
+                opacity: 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                radius: Style.cornerRadius
+                color: root.selectedBackground
+                width: footerDigits1.implicitWidth + Style.spacing.sm
+                height: footerDigits1.implicitHeight + Style.spacing.sm / 2
+
+                Text {
+                  id: footerDigits1
+                  anchors.centerIn: parent
+                  text: "0-9"
+                  color: root.selectedText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+              }
+
+              Text {
+                text: "  → type,    ALT+SHIFT+ "
+                color: root.foreground
+                opacity: 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                radius: Style.cornerRadius
+                color: root.selectedBackground
+                width: footerDigits2.implicitWidth + Style.spacing.sm
+                height: footerDigits2.implicitHeight + Style.spacing.sm / 2
+
+                Text {
+                  id: footerDigits2
+                  anchors.centerIn: parent
+                  text: "0-9"
+                  color: root.selectedText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+              }
+
+              Text {
+                text: "  → copy"
+                color: root.foreground
+                opacity: 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.verticalCenter: parent.verticalCenter
+              }
             }
 
             Text {
-              text: "Alt + Shift + number  →  copy"
+              text: "TAB → switch,    ENTER → type,    CTRL+ENTER → copy"
               color: root.foreground
               opacity: 0.45
               font.family: root.fontFamily
