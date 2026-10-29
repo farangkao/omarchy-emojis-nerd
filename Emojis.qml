@@ -38,6 +38,7 @@ Item {
   property var nerdRows: []
   property var nerdPendingCmd: null
   readonly property string tsvPath: Qt.resolvedUrl("nerdfonts.tsv").toString().replace("file://", "")
+  readonly property string insertHelper: Qt.resolvedUrl("insert.sh").toString().replace("file://", "")
 
   // Kaomoji rows parse from kaomoji.tsv on first tab activation (the
   // FileView's preload stays false until then) and live in memory —
@@ -338,7 +339,7 @@ Item {
   function applySelected(emoji) {
     if (!emoji) return
     root.dismiss()
-    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
+    Quickshell.execDetached([root.insertHelper, emoji])
   }
 
   function copySelected(emoji) {

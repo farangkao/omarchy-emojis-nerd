@@ -67,7 +67,7 @@ behavior, for as much compatibility as possible:
 ## Requirements
 
 - [Omarchy](https://omarchy.org) with shell plugin support
-- Everything else already ships with Omarchy: wl-clipboard, wtype, and a
+- Everything else already ships with Omarchy: wl-clipboard, Hyprland 0.56+ (Lua) and a
   Nerd Font
 
 > **Rendering note:** emojis render in any app. Nerd Font glyphs render
