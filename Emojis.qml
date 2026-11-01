@@ -45,6 +45,17 @@ Item {
   // that first load lands.
   property var kaomojiRows: null
 
+  // Insert helper for ENTER picks, persisted in settingsPath. "omarchy"
+  // (default) calls Omarchy's own omarchy-menu-emoji-insert; "custom"
+  // calls this plugin's insert.sh, which sends Shift+Insert through
+  // Hyprland because browsers ignore the key when wtype sends it.
+  property string insertMethod: "omarchy"
+  readonly property string settingsPath: Quickshell.env("HOME") + "/.local/state/omarchy/emojis-nerd-settings.json"
+  readonly property string insertHelperPath: Qt.resolvedUrl("insert.sh").toString().replace("file://", "")
+  // Settings is not a dataset tab: modeOrder skips it (Tab never cycles
+  // here), so remember where to step back to on Escape/Tab.
+  property string lastPickMode: "recent"
+
   // MRU of type/copy picks across emoji, nerd, and kaomoji. Persisted
   // next to Omarchy clipboard history under ~/.local/state/omarchy/.
   property var recentRows: []
@@ -127,6 +138,7 @@ Item {
   }
 
   function rebuildDisplay() {
+    if (root.mode === "settings") return
     if (root.mode === "nerd") {
       root.selectedIndex = 0
       nerdSearchDebounce.restart()
@@ -279,12 +291,20 @@ Item {
 
   function setMode(nextMode) {
     if (root.mode === nextMode) return
+    if (nextMode === "settings" && root.mode !== "settings")
+      root.lastPickMode = root.mode
     root.mode = nextMode
     // Keep the filter across switches so Tab compares the same query
     // in every dataset.
     root.selectedIndex = 0
     root.cursorActive = true
     root.rebuildDisplay()
+    // Settings owns its keys through settingsPage; every dataset tab
+    // steers through keyCatcher.
+    Qt.callLater(function() {
+      if (root.mode === "settings") settingsPage.forceActiveFocus()
+      else keyCatcher.forceActiveFocus()
+    })
   }
 
   function setFilter(nextFilter) {
@@ -335,10 +355,21 @@ Item {
     recentFile.setText(JSON.stringify(root.recentRows.slice(0, root.recentLimit), null, 2) + "\n")
   }
 
+  function loadSettings(raw) {
+    root.insertMethod = EmojiSearch.normalizeSettings(raw).insertMethod
+  }
+
+  function saveSettings() {
+    settingsFile.setText(JSON.stringify({ insertMethod: root.insertMethod }) + "\n")
+  }
+
   function applySelected(emoji) {
     if (!emoji) return
     root.dismiss()
-    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
+    var helper = root.insertMethod === "custom"
+      ? root.insertHelperPath
+      : root.omarchyPath + "/bin/omarchy-menu-emoji-insert"
+    Quickshell.execDetached([helper, emoji])
   }
 
   function copySelected(emoji) {
@@ -365,6 +396,16 @@ Item {
     printErrors: false
     onLoaded: root.loadRecents(text())
     onLoadFailed: root.loadRecents("[]")
+  }
+
+  FileView {
+    id: settingsFile
+    path: root.settingsPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadSettings(text())
+    onLoadFailed: root.loadSettings("")
   }
 
   // kaomoji.tsv reads on first tab activation: preload stays false so
@@ -462,15 +503,25 @@ Item {
         }
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
-            if (root.filterText) root.setFilter("")
+            if (root.mode === "settings") root.setMode(root.lastPickMode)
+            else if (root.filterText) root.setFilter("")
             else root.dismiss()
             event.accepted = true
           } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
             // Shift+Tab cycles backwards. It usually arrives as Backtab,
             // but some input paths send Tab with the Shift modifier.
             var step = event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier) ? -1 : 1
-            var count = root.modeOrder.length
-            root.setMode(root.modeOrder[(root.modeOrder.indexOf(root.mode) + step + count) % count])
+            if (root.mode === "settings") {
+              root.setMode(root.lastPickMode)
+            } else {
+              var count = root.modeOrder.length
+              root.setMode(root.modeOrder[(root.modeOrder.indexOf(root.mode) + step + count) % count])
+            }
+            event.accepted = true
+          } else if (root.mode === "settings") {
+            // Defensive: focus lives on settingsPage while settings is
+            // open, but a key landing here must not touch the filter or
+            // the stale grid behind the settings page.
             event.accepted = true
           } else if (root.mode === "recent" && (event.modifiers & Qt.AltModifier)
                      && EmojiSearch.hotkeyIndex(event.key, event.nativeScanCode) >= 0) {
@@ -531,49 +582,91 @@ Item {
         anchors.leftMargin: card.contentLeftInset
         spacing: root.contentSpacing
 
-        Row {
-          id: tabBar
+        Item {
           width: parent.width
           height: root.headerHeight
-          spacing: root.contentSpacing
 
-          Repeater {
-            model: [
-              { key: "recent", label: "Recents" },
-              { key: "emoji", label: "Emojis" },
-              { key: "nerd", label: "Nerd Fonts" },
-              { key: "kaomoji", label: "Kaomoji" }
-            ]
+          Row {
+            id: tabBar
+            height: parent.height
+            spacing: root.contentSpacing
 
-            delegate: Rectangle {
-              id: tab
+            Repeater {
+              model: [
+                { key: "recent", label: "Recents" },
+                { key: "emoji", label: "Emojis" },
+                { key: "nerd", label: "Nerd Fonts" },
+                { key: "kaomoji", label: "Kaomoji" }
+              ]
 
-              required property var modelData
+              delegate: Rectangle {
+                id: tab
 
-              readonly property bool active: root.mode === modelData.key
+                required property var modelData
 
-              height: root.headerHeight
-              width: tabLabel.implicitWidth + Style.spacing.controlPaddingX * 2
-              radius: root.cornerRadius
-              color: active ? root.selectedBackground : "transparent"
-              border.width: active ? 0 : 1
-              border.color: root.border
+                readonly property bool active: root.mode === modelData.key
 
-              Text {
-                id: tabLabel
-                anchors.centerIn: parent
-                text: tab.modelData.label
-                color: tab.active ? root.selectedText : root.foreground
-                opacity: tab.active ? 1 : 0.7
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                height: root.headerHeight
+                width: tabLabel.implicitWidth + Style.spacing.controlPaddingX * 2
+                radius: root.cornerRadius
+                color: active ? root.selectedBackground : "transparent"
+                border.width: active ? 0 : 1
+                border.color: root.border
+
+                Text {
+                  id: tabLabel
+                  anchors.centerIn: parent
+                  text: tab.modelData.label
+                  color: tab.active ? root.selectedText : root.foreground
+                  opacity: tab.active ? 1 : 0.7
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.setMode(tab.modelData.key)
+                }
               }
+            }
+          }
 
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.setMode(tab.modelData.key)
-              }
+          // Settings icon, far right: a quiet icon button without the
+          // tabs' pill chrome so it reads as a control, not a fifth
+          // header. It stays out of the Repeater and modeOrder, so Tab
+          // cycling and the filter never leave the dataset tabs.
+          Rectangle {
+            id: settingsTab
+
+            readonly property bool active: root.mode === "settings"
+
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: root.headerHeight
+            width: settingsTabLabel.implicitWidth + Style.spacing.controlPaddingX * 2
+            radius: root.cornerRadius
+            color: active ? root.selectedBackground
+                  : settingsHover.containsMouse
+                    ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
+                    : "transparent"
+
+            Text {
+              id: settingsTabLabel
+              anchors.centerIn: parent
+              text: "󰒓"
+              color: settingsTab.active ? root.selectedText : root.foreground
+              opacity: settingsTab.active || settingsHover.containsMouse ? 1 : 0.55
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            MouseArea {
+              id: settingsHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.setMode("settings")
             }
           }
         }
@@ -588,13 +681,14 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText
+            text: root.mode === "settings" ? "Settings"
+                  : root.filterText
                   || (root.mode === "nerd" ? "Search Nerd Fonts…"
-                     : root.mode === "kaomoji" ? "Search kaomoji by tag…"
-                     : root.mode === "recent" ? "Search recent…"
-                                               : "Search emojis…  ( ! switches to Nerd Fonts )")
+                 : root.mode === "kaomoji" ? "Search kaomoji by tag…"
+                 : root.mode === "recent" ? "Search recent…"
+                                           : "Search emojis…  ( ! switches to Nerd Fonts )")
             color: root.foreground
-            opacity: root.filterText ? 1 : 0.58
+            opacity: root.mode === "settings" ? 0.7 : (root.filterText ? 1 : 0.58)
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
             elide: Text.ElideRight
@@ -605,10 +699,75 @@ Item {
           width: parent.width
           height: parent.height - root.headerHeight * 2 - root.footerHeight - root.contentSpacing * 3
 
+          // Settings page. Not a dataset: it keeps its own focus (the
+          // Dropdown's popup steals it while open) and hides the grid
+          // instead of participating in displayModel.
+          Column {
+            id: settingsPage
+            visible: root.mode === "settings"
+            width: parent.width
+            topPadding: Style.spacing.md
+            spacing: Style.spacing.md
+
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: function(event) {
+              if (event.key === Qt.Key_Escape
+                  || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                root.setMode(root.lastPickMode)
+                event.accepted = true
+              } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                         || event.key === Qt.Key_Space || event.key === Qt.Key_Down) {
+                insertDropdown.open()
+                event.accepted = true
+              }
+            }
+
+            Text {
+              text: "Insert method"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+            }
+
+            Text {
+              width: parent.width
+              wrapMode: Text.WordWrap
+              text: "How ENTER types the picked glyph. The Omarchy default calls omarchy-menu-emoji-insert (wtype); the custom method sends Shift+Insert through Hyprland instead, which browser text fields paste."
+              color: root.foreground
+              opacity: 0.6
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            Dropdown {
+              id: insertDropdown
+              width: parent.width
+              showLabel: false
+              value: root.insertMethod
+              options: [
+                { value: "omarchy", label: "Use Omarchy Default Insert Code" },
+                { value: "custom", label: "Use Custom Insert Code" }
+              ]
+              foreground: root.foreground
+              background: root.background
+              popupBorder: root.border
+              accent: Color.accent
+              fontFamily: root.fontFamily
+              onChanged: function(value) {
+                root.insertMethod = value
+                root.saveSettings()
+              }
+              // The popup's option list holds focus while open; back to
+              // the settings page once it closes so keys keep working.
+              onPopupOpenChanged: if (!popupOpen && root.mode === "settings")
+                Qt.callLater(function() { settingsPage.forceActiveFocus() })
+            }
+          }
+
           GridView {
             id: resultGrid
             anchors.fill: parent
-            visible: !root.listMode
+            visible: !root.listMode && root.mode !== "settings"
             model: displayModel
             clip: true
             cellWidth: root.cellWidth
@@ -786,7 +945,7 @@ Item {
           Column {
             anchors.centerIn: parent
             spacing: Style.space(8)
-            visible: displayModel.count === 0
+            visible: root.mode !== "settings" && displayModel.count === 0
 
             Text {
               text: "󰈉"
