@@ -14,7 +14,10 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest began its staged migration to Ubuntu 26 on
+    # 2026-10-19 (actions/runner-images#14748), which would flip the image
+    # under a green CI without notice.
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
