@@ -1,6 +1,6 @@
 # Development and publishing tasks for the Emojis & Nerd Fonts plugin.
-# Requires: jq, node, python3, git; plus `gh` for publish and
-# security-baseline, and `omarchy` for validate/install-local.
+# Requires: jq, node, python3, git; plus `gh` for publish, and `omarchy`
+# for validate/install-local.
 
 [tasks.test]
 description = "Run search-logic, dataset, and insert-helper tests"

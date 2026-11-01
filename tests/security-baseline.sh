@@ -8,19 +8,25 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The clone intentionally tracks the marketplace's current main — this
+# task exists to reproduce the marketplace's *current* verification
+# rules, which have already changed once. For a pinned audit instead,
+# set MARKETPLACE_REF to an immutable commit SHA; the resolved commit
+# is always printed so a run is attributable either way.
 marketplace=.tmp/marketplace
-if [ -d "$marketplace/.git" ]; then
-  git -C "$marketplace" fetch --depth 1 --quiet origin main
-  git -C "$marketplace" reset --hard --quiet origin/main
-else
+ref="${MARKETPLACE_REF:-main}"
+if [ ! -d "$marketplace/.git" ]; then
   rm -rf "$marketplace"
   git clone --depth 1 --quiet https://github.com/HANCORE-linux/omarchy-plugin-marketplace "$marketplace"
 fi
+git -C "$marketplace" fetch --depth 1 --quiet origin "$ref"
+git -C "$marketplace" reset --hard --quiet FETCH_HEAD
+echo "marketplace scanner at $(git -C "$marketplace" rev-parse HEAD) (${ref})"
 
 # Metadata must match the scanner CLI's current contract (it validates
 # pluginIds/listedPlugins/entryPoints, not just repo+sha); the task
-# resets the marketplace clone to origin/main, so this follows whatever
-# validate-submission.mjs writes there.
+# resets the marketplace clone to the resolved main, so this follows
+# whatever validate-submission.mjs writes there.
 jq -n \
   --arg repoUrl "https://github.com/farangkao/omarchy-emojis-nerd" \
   --arg commitSha "$(git rev-parse HEAD)" \
@@ -35,13 +41,10 @@ jq -n \
     entryPoints: ["Emojis.qml"]
   }' > .tmp/baseline-metadata.json
 
-# gh's mise shim prints a banner to stdout, so keep only the last line and
-# only use it when it looks like a token; otherwise fall back to anonymous
-# access, which works for public repos.
-token="$(gh auth token 2>/dev/null | tail -n 1)"
-case "$token" in
-  ghp_*|gho_*|ghu_*|ghs_*|ghr_*|github_pat_*) export GITHUB_TOKEN="$token" ;;
-esac
+# Anonymous GitHub access by default (both repos are public). A token
+# is only involved when the caller exports GITHUB_TOKEN themselves — it
+# is never pulled from gh's config here, so third-party scanner code
+# cannot silently inherit the developer's credentials.
 
 rm -f .tmp/baseline-result.json
 node "$marketplace/scripts/security-baseline.mjs" --metadata=.tmp/baseline-metadata.json --json=.tmp/baseline-result.json || exit 1
