@@ -17,7 +17,23 @@ else
   git clone --depth 1 --quiet https://github.com/HANCORE-linux/omarchy-plugin-marketplace "$marketplace"
 fi
 
-printf '{"schemaVersion":1,"repoUrl":"https://github.com/farangkao/omarchy-emojis-nerd","commitSha":"%s"}\n' "$(git rev-parse HEAD)" > .tmp/baseline-metadata.json
+# Metadata must match the scanner CLI's current contract (it validates
+# pluginIds/listedPlugins/entryPoints, not just repo+sha); the task
+# resets the marketplace clone to origin/main, so this follows whatever
+# validate-submission.mjs writes there.
+jq -n \
+  --arg repoUrl "https://github.com/farangkao/omarchy-emojis-nerd" \
+  --arg commitSha "$(git rev-parse HEAD)" \
+  '{
+    schemaVersion: 1,
+    repoUrl: $repoUrl,
+    repository: "farangkao/omarchy-emojis-nerd",
+    defaultBranch: "main",
+    commitSha: $commitSha,
+    pluginIds: ["farangkao.emojis-nerd"],
+    listedPlugins: [{ pluginId: "farangkao.emojis-nerd", manifestPathHint: "manifest.json" }],
+    entryPoints: ["Emojis.qml"]
+  }' > .tmp/baseline-metadata.json
 
 # gh's mise shim prints a banner to stdout, so keep only the last line and
 # only use it when it looks like a token; otherwise fall back to anonymous
