@@ -3,10 +3,11 @@
 # security-baseline, and `omarchy` for validate/install-local.
 
 [tasks.test]
-description = "Run search-logic and dataset tests"
+description = "Run search-logic, dataset, and insert-helper tests"
 run = """
 tests/emoji-search-test.sh
 tests/dataset-test.sh
+tests/insert-test.sh
 """
 
 [tasks.validate]
@@ -17,7 +18,7 @@ run = "omarchy plugin validate ."
 description = "Sync plugin files into ~/.config/omarchy/plugins and restart the shell"
 run = """
 mkdir -p "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd"
-cp manifest.json Emojis.qml EmojiSearch.js emojis.json nerdfonts.tsv kaomoji.tsv "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
+cp manifest.json Emojis.qml EmojiSearch.js emojis.json nerdfonts.tsv kaomoji.tsv insert.sh "$HOME/.config/omarchy/plugins/farangkao.emojis-nerd/"
 omarchy restart shell
 """
 

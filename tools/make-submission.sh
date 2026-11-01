@@ -29,6 +29,8 @@ Replaces the built-in emoji picker via omarchy.clonedFrom routing; the
 SUPER+CTRL+E binding keeps working and removal restores the built-in picker.
 Requires Omarchy with shell plugin support. Ships two datasets: Omarchy
 emojis (MIT) and Nerd Fonts glyphnames (MIT); no fonts are bundled.
+Ships an opt-in insert helper (insert.sh, enabled via the plugin's
+Settings tab) that only calls wl-copy and hyprctl — no downloads.
 
 ### Submission checklist
 

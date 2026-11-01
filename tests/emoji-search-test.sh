@@ -141,5 +141,15 @@ assert.strictEqual(EmojiSearch.hotkeyIndex(0x30, 0), 9)
 assert.strictEqual(EmojiSearch.hotkeyIndex(0x41, 38), -1)  // A
 assert.deepStrictEqual([0, 8, 9, 10].map(EmojiSearch.hotkeyLabel), ["1", "9", "0", ""])
 
+// Settings: unknown/garbage input always falls back to the Omarchy default
+assert.deepStrictEqual(EmojiSearch.defaultSettings(), { insertMethod: "omarchy" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings(""), { insertMethod: "omarchy" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings("not json"), { insertMethod: "omarchy" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings('{"insertMethod":"nope"}'), { insertMethod: "omarchy" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings('{"insertMethod":123}'), { insertMethod: "omarchy" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings("[]"), { insertMethod: "omarchy" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings('{"insertMethod":"custom"}'), { insertMethod: "custom" })
+assert.deepStrictEqual(EmojiSearch.normalizeSettings('{"other":1}'), { insertMethod: "omarchy" })
+
 console.log("emoji-search-test: all assertions passed")
 EOF

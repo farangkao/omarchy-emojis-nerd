@@ -37,6 +37,10 @@ emoji picker. SUPER+CTRL+E keeps working; it just opens this picker instead.
 - **Type or copy** — Enter or left-click types the glyph into the focused
   app; Ctrl+Enter or right-click copies it to the clipboard (it stays
   pasteable and enters the clipboard history)
+- **Settings tab** — a quiet cog icon at the right end of the tab bar;
+  chooses how Enter types glyphs (Omarchy's insert or a custom
+  Hyprland-based insert that browsers paste), persisted under
+  `~/.local/state/omarchy/emojis-nerd-settings.json`
 - **Full keyboard navigation** — arrows, PageUp/PageDown, Escape
 - **Theme-aware** — follows your Omarchy theme, light or dark
 - **Light footprint** — the kaomoji dataset loads on first use of its tab,
@@ -64,9 +68,37 @@ behavior, for as much compatibility as possible:
   want a copy: a regular `wl-copy` that keeps the glyph on the clipboard —
   pasteable anywhere, repeatedly, and visible in the clipboard manager.
 
+## Browser paste & the insert method
+
+Browser text fields (Firefox/Chromium family) often don't paste what the
+default typing action sends: Omarchy's `omarchy-menu-emoji-insert` pastes
+with a synthetic Shift+Insert from `wtype`, and browsers ignore keys from
+wtype's throwaway keymap
+([wtype #31](https://github.com/atx/wtype/issues/31)). Upstream tracks
+this as
+[omacom/omarchy#12376](https://github.com/omacom/omarchy/issues/12376);
+terminals and most GTK/Qt apps are unaffected.
+
+The Settings page (the cog icon at the right end of the tab bar) therefore
+makes the insert method for Enter/left-click a choice:
+
+- **Use Omarchy Default Insert Code** (default) — calls Omarchy's own
+  `omarchy-menu-emoji-insert`, keeping stock behavior and requirements.
+- **Use Custom Insert Code** — runs this plugin's `insert.sh`: the same
+  sensitive clipboard offer, but the Shift+Insert keystroke is sent by
+  Hyprland itself (`hyprctl dispatch hl.dsp.send_key_state`), which
+  browsers paste. It uses Hyprland's Lua dispatch, available since
+  Hyprland 0.56 — the version every Omarchy with plugin support (v4+)
+  already ships.
+
+The choice is saved to `~/.local/state/omarchy/emojis-nerd-settings.json`
+and survives updates and reboots. The custom method was contributed by
+[Somnius](https://github.com/Somnius) in
+[PR #9](https://github.com/farangkao/omarchy-emojis-nerd/pull/9).
+
 ## Requirements
 
-- [Omarchy](https://omarchy.org) with shell plugin support
+- [Omarchy](https://omarchy.org) with shell plugin support (v4+)
 - Everything else already ships with Omarchy: wl-clipboard, wtype, and a
   Nerd Font
 
@@ -96,12 +128,14 @@ omarchy plugin remove farangkao.emojis-nerd
 ```
 
 Removal re-enables the built-in emoji picker. Your Recents history
-(`~/.local/state/omarchy/emojis-nerd-recents.json`) survives removal —
-leaving it is harmless and keeps your history if you reinstall; delete it
-for a fully clean slate:
+(`~/.local/state/omarchy/emojis-nerd-recents.json`) and settings
+(`emojis-nerd-settings.json`) survive removal — leaving them is harmless
+and keeps your history if you reinstall; delete them for a fully clean
+slate:
 
 ```bash
-rm -f ~/.local/state/omarchy/emojis-nerd-recents.json
+rm -f ~/.local/state/omarchy/emojis-nerd-recents.json \
+      ~/.local/state/omarchy/emojis-nerd-settings.json
 ```
 
 ## Controls
@@ -113,6 +147,7 @@ rm -f ~/.local/state/omarchy/emojis-nerd-recents.json
 | Tab | Cycle Recents → emojis → Nerd Fonts → kaomoji (the filter is kept) |
 | Shift+Tab | Cycle the modes backwards |
 | Header tabs | Switch modes with the mouse |
+| Gear icon (right of the tabs) | Open Settings; Escape/Tab leaves it again |
 | Arrow keys / PageUp / PageDown | Move the cursor |
 | Enter | Type the selected glyph into the focused app |
 | Ctrl+Enter | Copy the selected glyph to the clipboard |

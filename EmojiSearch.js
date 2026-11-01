@@ -200,6 +200,30 @@ function rememberRecent(list, item, limit) {
   return out
 }
 
+// Settings are a small persisted object. insertMethod picks the insert
+// helper for Enter picks: "omarchy" routes through Omarchy's own
+// omarchy-menu-emoji-insert, "custom" through this plugin's insert.sh
+// (Shift+Insert sent by Hyprland, which browsers accept; wtype's
+// throwaway keymap they don't). Unknown or missing values fall back to
+// the Omarchy default so a hand-edited file can never break picking.
+var insertMethods = ["omarchy", "custom"]
+
+function defaultSettings() {
+  return { insertMethod: "omarchy" }
+}
+
+function normalizeSettings(raw) {
+  var settings = defaultSettings()
+  try {
+    var data = JSON.parse(String(raw || ""))
+    if (data && typeof data === "object" && insertMethods.indexOf(data.insertMethod) >= 0)
+      settings.insertMethod = data.insertMethod
+  } catch (e) {
+    // Garbage or missing file: keep defaults.
+  }
+  return settings
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseEmojis: parseEmojis,
@@ -216,6 +240,8 @@ if (typeof module !== "undefined") {
     rememberRecent: rememberRecent,
     recentHint: recentHint,
     hotkeyIndex: hotkeyIndex,
-    hotkeyLabel: hotkeyLabel
+    hotkeyLabel: hotkeyLabel,
+    defaultSettings: defaultSettings,
+    normalizeSettings: normalizeSettings
   }
 }

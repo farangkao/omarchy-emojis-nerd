@@ -30,3 +30,6 @@ jobs:
 
       - name: Run dataset tests
         run: tests/dataset-test.sh
+
+      - name: Run insert helper tests
+        run: tests/insert-test.sh
